@@ -10,6 +10,7 @@ import { EmptyWorkspaceState, WorkspaceShell } from "./WorkspaceShell";
 import { WorkspacePanel } from "./WorkspacePanel";
 import { ContextToolbar } from "./ContextToolbar";
 import { ProjectLibraryDialog } from "./ProjectLibraryDialog";
+import { CalibrationDialog } from "../features/calibration/CalibrationDialog";
 import { ToolRail } from "./ToolRail";
 import { usePdfSessionLifecycle } from "./usePdfSessionLifecycle";
 import { usePdfPageLabels } from "./usePdfPageLabels";
@@ -19,15 +20,12 @@ import { useMeasurementShortcuts } from "./useMeasurementShortcuts";
 import { useCalibrationActions } from "./useCalibrationActions";
 import { Modal } from "../components/Modal";
 import { Button, ConfirmationDialog } from "../components/ui";
-import { CalibrationDialog } from "../features/calibration/CalibrationDialog";
 import { ScalesWorkspace } from "../features/calibration/ScalesWorkspace";
-import { ClassificationWorkspace } from "../features/classification/ClassificationWorkspace";
 import {
   MeasurementPanel,
   type MeasurementDeleteRequest,
 } from "../features/measurements/MeasurementPanel";
 import { MeasurementDetails } from "../features/measurements/MeasurementDetails";
-import { TakeoffWorkspace } from "../features/measurements/TakeoffWorkspace";
 import type { AuthoringCapability } from "../features/viewer/AuthoringCapability";
 import { confirmCalibration, selectCalibrationReference } from "./calibrationFlow";
 import type { LogicalPageBounds } from "../types/domain";
@@ -73,6 +71,18 @@ const ScaleCheckPanel = lazy(() =>
   })),
 );
 
+const ClassificationWorkspace = lazy(() =>
+  import("../features/classification/ClassificationWorkspace").then((module) => ({
+    default: module.ClassificationWorkspace,
+  })),
+);
+
+const TakeoffWorkspace = lazy(() =>
+  import("../features/measurements/TakeoffWorkspace").then((module) => ({
+    default: module.TakeoffWorkspace,
+  })),
+);
+
 type ExportDialogComponent = typeof import("../features/export/ExportDialog").ExportDialog;
 
 export function App() {
@@ -109,6 +119,7 @@ function PlanMeasureApp() {
     moveCountItem,
     renameMeasurement,
     setMeasurementNote,
+    setMeasurementColor,
     setMeasurementVisibility,
     setMeasurementsVisibility,
     deleteMeasurement,
@@ -659,6 +670,7 @@ function PlanMeasureApp() {
     setError,
     precisionAuthoringBlocked,
     clearDraft,
+    selectedMeasurementId,
     chooseWorkspaceTool,
     clearError,
     cancelWorkspaceCalibration,
@@ -926,60 +938,64 @@ function PlanMeasureApp() {
                 />
               }
               takeoff={
-                <TakeoffWorkspace
-                  key={workspaceVersion}
-                  pages={previewPages ?? session.pages}
-                  catalog={session.classificationCatalog}
-                  onOpenMeasurement={openTakeoffMeasurement}
-                  navigationBlocked={summaryExportBlocked}
-                  displayUnit={session.settings.displayUnit}
-                  decimalPlaces={session.settings.measurementDecimalPlaces}
-                  areaDisplay={session.settings.areaDisplay}
-                  pageLabelOverrides={session.pageLabelOverrides}
-                  sourcePageLabels={sourcePageLabels}
-                />
+                <Suspense fallback={null}>
+                  <TakeoffWorkspace
+                    key={workspaceVersion}
+                    pages={previewPages ?? session.pages}
+                    catalog={session.classificationCatalog}
+                    onOpenMeasurement={openTakeoffMeasurement}
+                    navigationBlocked={summaryExportBlocked}
+                    displayUnit={session.settings.displayUnit}
+                    decimalPlaces={session.settings.measurementDecimalPlaces}
+                    areaDisplay={session.settings.areaDisplay}
+                    pageLabelOverrides={session.pageLabelOverrides}
+                    sourcePageLabels={sourcePageLabels}
+                  />
+                </Suspense>
               }
               classifications={
-                <ClassificationWorkspace
-                  key={workspaceVersion}
-                  catalog={session.classificationCatalog}
-                  disabled={Boolean(
-                    calibrationFlow || calibrationCandidate || calibrationReferenceEdit,
-                  )}
-                  onCreateDimension={(name) =>
-                    addClassificationDimension(crypto.randomUUID(), name)
-                  }
-                  onApplyTemplate={applyClassificationTemplate}
-                  onRenameDimension={renameClassificationDimension}
-                  onDeleteDimension={(dimensionId) => {
-                    const dimension = session.classificationCatalog.dimensions.find(
-                      (item) => item.id === dimensionId,
-                    );
-                    if (dimension && !confirmDimensionDeletion) {
-                      deleteClassificationDimension(dimensionId);
-                    } else if (dimension) {
-                      requestDeleteClassification({ target: "dimension", dimensionId, name: dimension.name });
+                <Suspense fallback={null}>
+                  <ClassificationWorkspace
+                    key={workspaceVersion}
+                    catalog={session.classificationCatalog}
+                    disabled={Boolean(
+                      calibrationFlow || calibrationCandidate || calibrationReferenceEdit,
+                    )}
+                    onCreateDimension={(name) =>
+                      addClassificationDimension(crypto.randomUUID(), name)
                     }
-                  }}
-                  onArchiveDimension={archiveClassificationDimension}
-                  onRestoreDimension={restoreClassificationDimension}
-                  onCreateValue={(dimensionId, name) =>
-                    addClassificationValue(dimensionId, crypto.randomUUID(), name)
-                  }
-                  onRenameValue={renameClassificationValue}
-                  onDeleteValue={(dimensionId, valueId) => {
-                    const value = session.classificationCatalog.dimensions
-                      .find((item) => item.id === dimensionId)
-                      ?.values.find((item) => item.id === valueId);
-                    if (value && !confirmValueDeletion) {
-                      deleteClassificationValue(dimensionId, valueId);
-                    } else if (value) {
-                      requestDeleteClassification({ target: "value", dimensionId, valueId, name: value.name });
+                    onApplyTemplate={applyClassificationTemplate}
+                    onRenameDimension={renameClassificationDimension}
+                    onDeleteDimension={(dimensionId) => {
+                      const dimension = session.classificationCatalog.dimensions.find(
+                        (item) => item.id === dimensionId,
+                      );
+                      if (dimension && !confirmDimensionDeletion) {
+                        deleteClassificationDimension(dimensionId);
+                      } else if (dimension) {
+                        requestDeleteClassification({ target: "dimension", dimensionId, name: dimension.name });
+                      }
+                    }}
+                    onArchiveDimension={archiveClassificationDimension}
+                    onRestoreDimension={restoreClassificationDimension}
+                    onCreateValue={(dimensionId, name) =>
+                      addClassificationValue(dimensionId, crypto.randomUUID(), name)
                     }
-                  }}
-                  onArchiveValue={archiveClassificationValue}
-                  onRestoreValue={restoreClassificationValue}
-                />
+                    onRenameValue={renameClassificationValue}
+                    onDeleteValue={(dimensionId, valueId) => {
+                      const value = session.classificationCatalog.dimensions
+                        .find((item) => item.id === dimensionId)
+                        ?.values.find((item) => item.id === valueId);
+                      if (value && !confirmValueDeletion) {
+                        deleteClassificationValue(dimensionId, valueId);
+                      } else if (value) {
+                        requestDeleteClassification({ target: "value", dimensionId, valueId, name: value.name });
+                      }
+                    }}
+                    onArchiveValue={archiveClassificationValue}
+                    onRestoreValue={restoreClassificationValue}
+                  />
+                </Suspense>
               }
               scales={
                 <ScalesWorkspace
@@ -1039,6 +1055,9 @@ function PlanMeasureApp() {
                     }
                     onSaveNote={(note) =>
                       setMeasurementNote(currentPage.pageNumber, selectedMeasurement.id, note)
+                    }
+                    onChangeColor={(color) =>
+                      setMeasurementColor(currentPage.pageNumber, selectedMeasurement.id, color)
                     }
                     onAssignClassification={assignClassification}
                     onAddCountItems={beginAddingCountItems}
