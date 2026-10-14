@@ -267,7 +267,6 @@ function PlanMeasureApp() {
   }, [ExportDialog, setError]);
   const [projectLibraryOpen, setProjectLibraryOpen] = useState(false);
   const [pendingDiscardProjectId, setPendingDiscardProjectId] = useState<string | null>(null);
-  const [dismissInitialProjectLibrary, setDismissInitialProjectLibrary] = useState(false);
   const [keyboardAuthoringEnabled, setKeyboardAuthoringEnabledState] = useState(
     readKeyboardAuthoringPreference,
   );
@@ -343,7 +342,6 @@ function PlanMeasureApp() {
 
   const {
     activePdf,
-    recovery,
     savedProjects,
     activeProjectId,
     recoveryChecked,
@@ -951,7 +949,6 @@ function PlanMeasureApp() {
           const file = event.target.files?.[0];
           if (file) {
             setProjectLibraryOpen(false);
-            setDismissInitialProjectLibrary(true);
             void importProject(file);
           }
           event.target.value = "";
@@ -1265,6 +1262,7 @@ function PlanMeasureApp() {
         <WorkspaceShell
           keyboardAuthoringEnabled={keyboardAuthoringEnabled}
           isEmpty
+          dropOverlay="Drop PDF to open it"
           dragActive={dragActive}
           onDragEnter={handleDragEnter}
           onDragOver={handleDragOver}
@@ -1275,6 +1273,9 @@ function PlanMeasureApp() {
               onOpenPdf={() => fileInputRef.current?.click()}
               onOpenSample={() => void openSampleProject()}
               disabled={!recoveryChecked || loading || projectOperationPending}
+              projects={recoveryChecked ? savedProjects : []}
+              onOpenProject={(projectId) => void openProject(projectId)}
+              onShowAllProjects={() => setProjectLibraryOpen(true)}
             />
           }
         />
@@ -1318,7 +1319,7 @@ function PlanMeasureApp() {
         onConfirmationConfirm={handleOverlayConfirmationConfirm}
       />
 
-      {(projectLibraryOpen || (Boolean(recovery && !session) && !dismissInitialProjectLibrary)) && (
+      {projectLibraryOpen && (
       <Suspense fallback={null}>
       <ProjectLibraryDialog
         open
@@ -1331,7 +1332,6 @@ function PlanMeasureApp() {
         onOpenProject={(projectId, options) => {
           setPendingDiscardProjectId(null);
           setProjectLibraryOpen(false);
-          setDismissInitialProjectLibrary(true);
           if (session && activePdf && activeProjectId === projectId) {
             return;
           }
@@ -1340,7 +1340,6 @@ function PlanMeasureApp() {
         onOpenPdf={() => {
           setPendingDiscardProjectId(null);
           setProjectLibraryOpen(false);
-          setDismissInitialProjectLibrary(true);
           fileInputRef.current?.click();
         }}
         onImportProject={() => projectFileInputRef.current?.click()}
@@ -1355,7 +1354,6 @@ function PlanMeasureApp() {
         onClose={() => {
           setPendingDiscardProjectId(null);
           setProjectLibraryOpen(false);
-          if (recovery && !session) setDismissInitialProjectLibrary(true);
         }}
       />
       </Suspense>
