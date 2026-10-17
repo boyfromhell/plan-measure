@@ -11,9 +11,13 @@ import {
 import { Button, Dialog, Select, Switch, Tooltip } from "../components/ui";
 import type {
   ClassificationDimension,
+  Measurement,
   MeasurementDecimalPlaces,
+  MeasurementDisplayUnit,
+  PageCalibration,
   SessionSettings,
 } from "../types/domain";
+import { measurementLabelText } from "../features/viewer/labelContent";
 import { downloadExportFile } from "../services/exportDownload";
 import {
   exportAppPreferencesJson,
@@ -23,7 +27,7 @@ import {
   useAppPreferences,
   type AppPreferences,
 } from "../utils/appPreferences";
-import { localizeNumberString } from "../utils/format";
+import { DEFAULT_MEASUREMENT_DECIMAL_PLACES } from "../utils/format";
 import { SHORTCUT_GROUPS } from "../utils/shortcutReference";
 import type { RecoveredPlanStartupWorkspace } from "./recoveredPlanStartupPreference";
 import { useTheme, type ThemePreference } from "./themeState";
@@ -50,6 +54,7 @@ export type ProjectViewSettings = Pick<
   | "showMeasurements"
   | "showCalibration"
   | "labelClassificationDimensionId"
+  | "measureClouds"
 >;
 
 const AREA_DISPLAY_OPTIONS: Array<{ value: ProjectViewSettings["areaDisplay"]; label: string }> = [
@@ -81,6 +86,14 @@ const LABEL_BACKGROUND_OPTIONS = [
   { value: "solid", label: "Solid" },
   { value: "translucent", label: "Translucent" },
   { value: "none", label: "None" },
+] as const;
+
+const LABEL_TEXT_COLOR_OPTIONS = [
+  { value: "auto", label: "Auto" },
+  { value: "black", label: "Black" },
+  { value: "white", label: "White" },
+  { value: "blue", label: "Blue" },
+  { value: "red", label: "Red" },
 ] as const;
 
 const AFTER_FINISHING_OPTIONS = [
@@ -508,8 +521,144 @@ function SwitchRow({
   );
 }
 
+/** The selected measurement and the scale it is measured with, previewed in Measurements. */
+export interface LabelPreviewMeasurement {
+  measurement: Pick<Measurement, "type" | "points" | "name" | "classificationValueIds">;
+  calibration: PageCalibration | null;
+}
+
+// One drawing unit is one millimetre, so the samples read as round, grouped values in every unit.
+const SAMPLE_CALIBRATION: PageCalibration = {
+  id: "label-preview",
+  name: "Preview",
+  mode: "uniform",
+  start: { x: 0, y: 0 },
+  end: { x: 1, y: 0 },
+  referenceDistanceMm: 1,
+};
+
+const SAMPLE_MEASUREMENTS = [
+  {
+    kind: "Length",
+    measurement: {
+      type: "line",
+      name: "Wall",
+      points: [
+        { x: 0, y: 0 },
+        { x: 1_234_567.891, y: 0 },
+      ],
+    },
+  },
+  {
+    kind: "Area",
+    measurement: {
+      type: "polygon",
+      name: "Room",
+      points: [
+        { x: 0, y: 0 },
+        { x: 30_000, y: 0 },
+        { x: 30_000, y: 41_152.263 },
+        { x: 0, y: 41_152.263 },
+      ],
+    },
+  },
+] as const satisfies readonly {
+  kind: string;
+  measurement: Pick<Measurement, "type" | "points" | "name">;
+}[];
+
+function classificationNameFor(
+  dimension: ClassificationDimension | undefined,
+  valueIds: readonly string[] | undefined,
+): string | undefined {
+  if (!dimension) return undefined;
+  // A sample shows the dimension's first value; a measurement shows its own, as the canvas does.
+  if (!valueIds) return dimension.values.find((value) => !value.archived)?.name;
+  for (const id of valueIds) {
+    const name = dimension.values.find((value) => value.id === id)?.name;
+    if (name) return name;
+  }
+  return undefined;
+}
+
+/**
+ * The on-screen label exactly as the canvas composes it from every number and label setting: the
+ * selected measurement when there is one, otherwise a sample length and area.
+ */
+function LabelPreview({
+  selected,
+  displayUnit,
+  decimalPlaces,
+  areaDisplay,
+  labelContent,
+  classificationDimension,
+}: {
+  selected: LabelPreviewMeasurement | null;
+  displayUnit: MeasurementDisplayUnit;
+  decimalPlaces: MeasurementDecimalPlaces;
+  areaDisplay: ProjectViewSettings["areaDisplay"];
+  labelContent: AppPreferences["labelContent"];
+  classificationDimension: ClassificationDimension | undefined;
+}) {
+  const titleId = useId();
+  const rows = selected
+    ? [
+        {
+          kind: selected.measurement.name.trim() || "Unnamed",
+          text:
+            measurementLabelText(
+              selected.measurement,
+              selected.calibration,
+              displayUnit,
+              decimalPlaces,
+              areaDisplay,
+              labelContent,
+              classificationNameFor(
+                classificationDimension,
+                selected.measurement.classificationValueIds,
+              ),
+            ) ?? "No label until it has a scale",
+        },
+      ]
+    : SAMPLE_MEASUREMENTS.map(({ kind, measurement }) => ({
+        kind,
+        text:
+          measurementLabelText(
+            measurement,
+            SAMPLE_CALIBRATION,
+            displayUnit,
+            decimalPlaces,
+            areaDisplay,
+            labelContent,
+            classificationNameFor(classificationDimension, undefined),
+          ) ?? "",
+      }));
+  return (
+    <section className={styles.labelPreview} aria-labelledby={titleId}>
+      <h3 id={titleId} className={styles.groupTitle}>
+        Label preview
+        <span>{selected ? "Selected measurement" : "Sample measurements"}</span>
+      </h3>
+      <dl className={styles.labelPreviewList}>
+        {rows.map(({ kind, text }) => (
+          <div key={kind} className={styles.labelPreviewRow}>
+            <dt>{kind}</dt>
+            <dd>
+              <output className={styles.labelPreviewValue} aria-live="polite">
+                {text}
+              </output>
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
 export interface SettingsDialogProps {
   onClose: () => void;
+  /** Previewed in Measurements instead of the sample measurements. */
+  labelPreviewMeasurement?: LabelPreviewMeasurement | null;
   measurementDecimalPlaces?: MeasurementDecimalPlaces | null;
   /** Null when no project is open: project view settings are then shown disabled. */
   viewSettings?: ProjectViewSettings | null;
@@ -519,6 +668,7 @@ export interface SettingsDialogProps {
   confirmMeasurementDeletion?: boolean;
   confirmValueDeletion?: boolean;
   confirmDimensionDeletion?: boolean;
+  confirmScaleDeletion?: boolean;
   recoveredPlanStartupWorkspace?: RecoveredPlanStartupWorkspace;
   onMeasurementDecimalPlacesChange?: (decimalPlaces: MeasurementDecimalPlaces) => void;
   onViewSettingsChange?: (settings: Partial<ProjectViewSettings>) => void;
@@ -526,11 +676,13 @@ export interface SettingsDialogProps {
   onConfirmMeasurementDeletionChange?: (enabled: boolean) => void;
   onConfirmValueDeletionChange?: (enabled: boolean) => void;
   onConfirmDimensionDeletionChange?: (enabled: boolean) => void;
+  onConfirmScaleDeletionChange?: (enabled: boolean) => void;
   onRecoveredPlanStartupWorkspaceChange?: (workspace: RecoveredPlanStartupWorkspace) => void;
 }
 
 export function SettingsDialog({
   onClose,
+  labelPreviewMeasurement = null,
   measurementDecimalPlaces = null,
   viewSettings = null,
   classificationDimensions = [],
@@ -538,6 +690,7 @@ export function SettingsDialog({
   confirmMeasurementDeletion = true,
   confirmValueDeletion = true,
   confirmDimensionDeletion = true,
+  confirmScaleDeletion = true,
   recoveredPlanStartupWorkspace = "scales",
   onMeasurementDecimalPlacesChange,
   onViewSettingsChange,
@@ -545,6 +698,7 @@ export function SettingsDialog({
   onConfirmMeasurementDeletionChange,
   onConfirmValueDeletionChange,
   onConfirmDimensionDeletionChange,
+  onConfirmScaleDeletionChange,
   onRecoveredPlanStartupWorkspaceChange,
 }: SettingsDialogProps) {
   const [section, setSection] = useState<SectionId>("interface");
@@ -601,11 +755,10 @@ export function SettingsDialog({
     onConfirmMeasurementDeletionChange?.(true);
     onConfirmValueDeletionChange?.(true);
     onConfirmDimensionDeletionChange?.(true);
+    onConfirmScaleDeletionChange?.(true);
     onRecoveredPlanStartupWorkspaceChange?.("scales");
     setConfirmingReset(false);
   }
-
-  const preview = localizeNumberString("1234567.89");
 
   return (
     <>
@@ -787,15 +940,21 @@ export function SettingsDialog({
                     options={LABEL_CONTENT_OPTIONS}
                     onChange={set("labelContent")}
                   />
-                  <p className={styles.preview} aria-live="polite">
-                    <span>Preview</span>
-                    <output className={styles.previewValue}>{preview}</output>
-                  </p>
                   <SelectRow
                     label="Default unit for new plans"
                     value={preferences.defaultDisplayUnit}
                     options={UNIT_OPTIONS}
                     onChange={set("defaultDisplayUnit")}
+                  />
+                  <LabelPreview
+                    selected={viewSettings ? labelPreviewMeasurement : null}
+                    displayUnit={viewSettings?.displayUnit ?? preferences.defaultDisplayUnit}
+                    decimalPlaces={measurementDecimalPlaces ?? DEFAULT_MEASUREMENT_DECIMAL_PLACES}
+                    areaDisplay={viewSettings?.areaDisplay ?? "auto"}
+                    labelContent={preferences.labelContent}
+                    classificationDimension={classificationDimensions.find(
+                      (dimension) => dimension.id === viewSettings?.labelClassificationDimensionId,
+                    )}
                   />
                 </div>
               )}
@@ -874,6 +1033,12 @@ export function SettingsDialog({
                         options={AREA_DISPLAY_OPTIONS}
                         onChange={(areaDisplay) => onViewSettingsChange({ areaDisplay })}
                       />
+                      <SwitchRow
+                        label="Measure clouds"
+                        help="Shows each cloud's area and perimeter with straight sides between its corners, as for a rectangle, so they may not be exact."
+                        checked={viewSettings.measureClouds}
+                        onChange={(measureClouds) => onViewSettingsChange({ measureClouds })}
+                      />
                       <SelectRow
                         label="Label classification"
                         help="Shows the measurement's value from this classification in on-screen labels."
@@ -895,16 +1060,19 @@ export function SettingsDialog({
                       />
                       <SwitchRow
                         label="Labels"
+                        help="Shows each measurement's value on the plan. Label size and background are in Canvas."
                         checked={viewSettings.showLabels}
                         onChange={(showLabels) => onViewSettingsChange({ showLabels })}
                       />
                       <SwitchRow
                         label="Measurements"
+                        help="Shows measurements on the plan. Line thickness and fills are in Canvas."
                         checked={viewSettings.showMeasurements}
                         onChange={(showMeasurements) => onViewSettingsChange({ showMeasurements })}
                       />
                       <SwitchRow
                         label="Calibration"
+                        help="Shows the reference line each scale was calibrated with."
                         checked={viewSettings.showCalibration}
                         onChange={(showCalibration) => onViewSettingsChange({ showCalibration })}
                       />
@@ -915,10 +1083,6 @@ export function SettingsDialog({
                       Open a plan to change its display unit and visibility settings.
                     </p>
                   )}
-                  <p className={styles.sectionNote}>
-                    Line thickness, label size, fills and other canvas appearance settings are in
-                    Canvas.
-                  </p>
                 </div>
               )}
 
@@ -959,6 +1123,13 @@ export function SettingsDialog({
                     onChange={set("labelBackground")}
                   />
                   <SelectRow
+                    label="Label text"
+                    help="Auto keeps labels readable on the plan: white on solid labels, dark where the plan shows through."
+                    value={preferences.labelTextColor}
+                    options={LABEL_TEXT_COLOR_OPTIONS}
+                    onChange={set("labelTextColor")}
+                  />
+                  <SelectRow
                     label="Page grid"
                     value={preferences.pageGrid}
                     options={PAGE_GRID_OPTIONS}
@@ -974,6 +1145,13 @@ export function SettingsDialog({
                       label="Confirm before deleting measurements"
                       checked={confirmMeasurementDeletion}
                       onChange={onConfirmMeasurementDeletionChange}
+                    />
+                  )}
+                  {onConfirmScaleDeletionChange && (
+                    <SwitchRow
+                      label="Confirm before deleting scales"
+                      checked={confirmScaleDeletion}
+                      onChange={onConfirmScaleDeletionChange}
                     />
                   )}
                   {onConfirmValueDeletionChange && (

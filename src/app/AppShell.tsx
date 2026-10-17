@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { AppErrorNotification } from "./state";
 import type { ClassificationDimension, MeasurementDecimalPlaces } from "../types/domain";
-import type { ProjectViewSettings } from "./SettingsDialog";
+import type { LabelPreviewMeasurement, ProjectViewSettings } from "./SettingsDialog";
 import { AppBar } from "./AppBar";
 import { Button } from "../components/ui";
 import type { RecoveredPlanStartupWorkspace } from "./recoveredPlanStartupPreference";
@@ -19,6 +19,7 @@ interface AppShellProps {
   savedProjectCount?: number;
   canUndo?: boolean;
   canRedo?: boolean;
+  labelPreviewMeasurement?: LabelPreviewMeasurement | null;
   measurementDecimalPlaces?: MeasurementDecimalPlaces | null;
   viewSettings?: ProjectViewSettings | null;
   classificationDimensions?: readonly ClassificationDimension[];
@@ -26,9 +27,11 @@ interface AppShellProps {
   confirmMeasurementDeletion?: boolean;
   confirmValueDeletion?: boolean;
   confirmDimensionDeletion?: boolean;
+  confirmScaleDeletion?: boolean;
   recoveredPlanStartupWorkspace?: RecoveredPlanStartupWorkspace;
   onExport: () => void;
   onOpenProjects?: () => void;
+  onCloseProject?: () => void;
   onUndo?: () => void;
   onRedo?: () => void;
   onMeasurementDecimalPlacesChange?: (decimalPlaces: MeasurementDecimalPlaces) => void;
@@ -37,6 +40,7 @@ interface AppShellProps {
   onConfirmMeasurementDeletionChange?: (enabled: boolean) => void;
   onConfirmValueDeletionChange?: (enabled: boolean) => void;
   onConfirmDimensionDeletionChange?: (enabled: boolean) => void;
+  onConfirmScaleDeletionChange?: (enabled: boolean) => void;
   onRecoveredPlanStartupWorkspaceChange?: (workspace: RecoveredPlanStartupWorkspace) => void;
   statusMessage?: string | null;
   statusTone?: StatusTone;
@@ -55,6 +59,7 @@ export function AppShell({
   savedProjectCount = 0,
   canUndo = false,
   canRedo = false,
+  labelPreviewMeasurement = null,
   measurementDecimalPlaces = null,
   viewSettings = null,
   classificationDimensions,
@@ -62,9 +67,11 @@ export function AppShell({
   confirmMeasurementDeletion = true,
   confirmValueDeletion = true,
   confirmDimensionDeletion = true,
+  confirmScaleDeletion = true,
   recoveredPlanStartupWorkspace = "scales",
   onExport,
   onOpenProjects,
+  onCloseProject,
   onUndo,
   onRedo,
   onMeasurementDecimalPlacesChange,
@@ -73,6 +80,7 @@ export function AppShell({
   onConfirmMeasurementDeletionChange,
   onConfirmValueDeletionChange,
   onConfirmDimensionDeletionChange,
+  onConfirmScaleDeletionChange,
   onRecoveredPlanStartupWorkspaceChange,
   statusMessage,
   statusTone = "error",
@@ -98,6 +106,7 @@ export function AppShell({
         savedProjectCount={savedProjectCount}
         canUndo={canUndo}
         canRedo={canRedo}
+        labelPreviewMeasurement={labelPreviewMeasurement}
         measurementDecimalPlaces={measurementDecimalPlaces}
         viewSettings={viewSettings}
         classificationDimensions={classificationDimensions}
@@ -105,9 +114,11 @@ export function AppShell({
         confirmMeasurementDeletion={confirmMeasurementDeletion}
         confirmValueDeletion={confirmValueDeletion}
         confirmDimensionDeletion={confirmDimensionDeletion}
+        confirmScaleDeletion={confirmScaleDeletion}
         recoveredPlanStartupWorkspace={recoveredPlanStartupWorkspace}
         onExport={onExport}
         onOpenProjects={onOpenProjects}
+        onCloseProject={onCloseProject}
         onUndo={onUndo}
         onRedo={onRedo}
         onMeasurementDecimalPlacesChange={onMeasurementDecimalPlacesChange}
@@ -116,6 +127,7 @@ export function AppShell({
         onConfirmMeasurementDeletionChange={onConfirmMeasurementDeletionChange}
         onConfirmValueDeletionChange={onConfirmValueDeletionChange}
         onConfirmDimensionDeletionChange={onConfirmDimensionDeletionChange}
+        onConfirmScaleDeletionChange={onConfirmScaleDeletionChange}
         onRecoveredPlanStartupWorkspaceChange={onRecoveredPlanStartupWorkspaceChange}
       />
       <div className={styles.content}>
@@ -195,5 +207,5 @@ export function LoadingOverlay({ children }: { children: ReactNode }) {
     window.addEventListener("keydown", blockApplicationKey, true);
     return () => window.removeEventListener("keydown", blockApplicationKey, true);
   }, []);
-  return <div role="status" className={styles.loadingOverlay}><span className={styles.loadingMessage}>{children}</span></div>;
+  return <div role="status" className={styles.loadingOverlay} data-app-loading><span className={styles.loadingMessage}>{children}</span></div>;
 }

@@ -97,6 +97,27 @@ describe("path geometry", () => {
     ).toBe(false);
   });
 
+  it("revalidates a Polygon whose points were mutated after a previous check", () => {
+    const points = [
+      { x: 0, y: 0 },
+      { x: 0, y: 4 },
+      { x: 4, y: 4 },
+      { x: 4, y: 0 },
+    ];
+    expect(hasValidMeasurementPoints("polygon", points)).toBe(true);
+
+    points[2]!.x = 4;
+    points[2]!.y = 0;
+    points[3] = { x: 4, y: 4 };
+    expect(hasValidMeasurementPoints("polygon", points)).toBe(false);
+
+    points.splice(2, 2, { x: 4, y: 4 }, { x: 4, y: 0 });
+    expect(hasValidMeasurementPoints("polygon", points)).toBe(true);
+
+    points.push({ x: 2, y: 6 });
+    expect(hasValidMeasurementPoints("polygon", points)).toBe(false);
+  });
+
   it("rejects an asymmetric crossing with a plausible non-zero shoelace area", () => {
     const points = [
       { x: 0, y: 0 },
@@ -974,5 +995,31 @@ describe("geometry", () => {
         false,
       ),
     ).toThrow(RangeError);
+  });
+});
+
+describe("measurementResultsMm for revision clouds", () => {
+  const cloud = {
+    type: "cloud" as const,
+    points: [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 0, y: 10 },
+    ],
+  };
+
+  it("returns no measures for a cloud without a scale instead of throwing", () => {
+    expect(measurementResultsMm(cloud, null)).toEqual({
+      lengthMm: null,
+      perimeterMm: null,
+      areaMm2: null,
+    });
+  });
+
+  it("still measures a cloud that has a scale and still requires one for other closed types", () => {
+    const results = measurementResultsMm(cloud, { ...calibration, end: { x: 10, y: 0 } });
+    expect(results.lengthMm).toBeNull();
+    expect(results.areaMm2).toBeGreaterThan(0);
+    expect(() => measurementResultsMm({ ...cloud, type: "polygon" }, null)).toThrow(RangeError);
   });
 });

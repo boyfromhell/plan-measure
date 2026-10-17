@@ -9,9 +9,12 @@ import type {
 } from "../../types/domain";
 import { clampPointToPage, pageToScreen, screenToPage } from "../../utils/coordinates";
 import { hasValidMeasurementPoints, isMeasurementType } from "../../utils/geometry";
+import { measurementEditTargetCount } from "../../utils/quickShapesCore";
 import {
   keyboardEditPreview,
+  keyboardEditTargetPoint,
   keyboardHitMeasurement,
+  measurementEditTargetLabel,
   moveKeyboardCursor,
   type KeyboardMeasurement,
 } from "./keyboardGeometry";
@@ -36,6 +39,8 @@ interface KeyboardGeometryOptions {
   bounds: LogicalPageBounds | null;
   transform: ViewTransform;
   screenCenter: Point;
+  /** Visible viewer area in screen pixels; a remembered cursor outside it restarts at the center. */
+  visibleSize: { width: number; height: number };
   tool: Tool;
   draft: DrawingDraft | null;
   selectedIds: readonly string[];
@@ -74,6 +79,9 @@ export function useKeyboardGeometry(options: KeyboardGeometryOptions) {
   } = options;
   const [cursor, setCursor] = useState<Point | null>(null);
   const cursorRef = useRef<Point | null>(null);
+  // Where the cursor was last shown on this page, so hiding it (blur, zoom, a click, a tool with
+  // no cursor) does not send the next arrow press back to the center.
+  const lastCursorRef = useRef<Point | null>(null);
   const [edit, setEdit] = useState<KeyboardEdit | null>(null);
   const editRef = useRef<KeyboardEdit | null>(null);
   const [announcement, setAnnouncement] = useState("");
@@ -84,6 +92,7 @@ export function useKeyboardGeometry(options: KeyboardGeometryOptions) {
 
   const updateCursor = (point: Point) => {
     cursorRef.current = point;
+    lastCursorRef.current = point;
     setCursor(point);
     setAnnouncement(`Cursor X ${point.x.toFixed(2)}, Y ${point.y.toFixed(2)}.`);
   };
@@ -91,19 +100,31 @@ export function useKeyboardGeometry(options: KeyboardGeometryOptions) {
     editRef.current = next;
     setEdit(next);
   };
-  const cancel = useCallback(() => {
+  const endEdit = useCallback(() => {
     movementRef.current = { key: "", fast: false, repeats: 0 };
-    cursorRef.current = null;
     editRef.current = null;
-    setCursor(null);
     setEdit(null);
   }, []);
+  const cancel = useCallback(() => {
+    endEdit();
+    cursorRef.current = null;
+    setCursor(null);
+  }, [endEdit]);
 
+  useLayoutEffect(() => {
+    lastCursorRef.current = null;
+  }, [document, page.pageNumber]);
   useLayoutEffect(() => {
     // Keyboard previews have the same navigation/environment ownership boundary as pointer drags.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     cancel();
-  }, [cancel, document, page.pageNumber, tool, disabled]);
+  }, [cancel, document, page.pageNumber, disabled]);
+  useLayoutEffect(() => {
+    // A new tool ends any edit but keeps the cursor where the user left it; Hand has no cursor.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (tool === "hand") cancel();
+    else endEdit();
+  }, [cancel, endEdit, tool]);
 
   useLayoutEffect(() => {
     const current = editRef.current;
@@ -183,7 +204,7 @@ export function useKeyboardGeometry(options: KeyboardGeometryOptions) {
     });
     updateCursor(origin);
     setAnnouncement(
-      "Moving selection. Arrows preview the move; Enter saves; Escape cancels. Brackets choose a vertex for a single measurement.",
+      "Moving selection. Arrows preview the move; Enter saves; Escape cancels. Brackets choose a vertex or a side for a single measurement.",
     );
     return true;
   }
@@ -203,9 +224,10 @@ export function useKeyboardGeometry(options: KeyboardGeometryOptions) {
       orthogonal,
       targets,
     });
-    const count = working[0]!.points.length;
+    const measurement = working[0]!;
+    const count = measurementEditTargetCount(measurement.type, measurement.points);
     if (!Number.isInteger(vertex) || vertex < -1 || vertex >= count) return;
-    const origin = working[0]!.points[vertex < 0 ? 0 : vertex]!;
+    const origin = keyboardEditTargetPoint(measurement, vertex);
     const visibleTransform = options.revealPoint?.(origin) ?? transform;
     updateEdit({
       ...currentEdit,
@@ -217,7 +239,9 @@ export function useKeyboardGeometry(options: KeyboardGeometryOptions) {
     });
     updateCursor(origin);
     setAnnouncement(
-      vertex < 0 ? "Moving whole measurement." : `Editing vertex ${vertex + 1} of ${count}.`,
+      vertex < 0
+        ? "Moving whole measurement."
+        : `Editing ${measurementEditTargetLabel(measurement.type, measurement.points, vertex).toLowerCase()}.`,
     );
   }
 
@@ -240,6 +264,18 @@ export function useKeyboardGeometry(options: KeyboardGeometryOptions) {
     return moveKeyboardCursor(point, event.key, transform.zoom, event.shiftKey, bounds!, repeats);
   }
 
+  function resumePoint(pageBounds: LogicalPageBounds) {
+    const last = lastCursorRef.current;
+    if (last) {
+      const screen = pageToScreen(last, transform);
+      const { width, height } = options.visibleSize;
+      if (screen.x >= 0 && screen.y >= 0 && screen.x <= width && screen.y <= height) {
+        return clampPointToPage(last, pageBounds);
+      }
+    }
+    return clampPointToPage(screenToPage(options.screenCenter, transform), pageBounds);
+  }
+
   function handleKeyUp(event: KeyboardEvent) {
     if (event.key.startsWith("Arrow") || event.key === "Shift") {
       movementRef.current = { key: "", fast: false, repeats: 0 };
@@ -248,9 +284,8 @@ export function useKeyboardGeometry(options: KeyboardGeometryOptions) {
 
   function ensureCursorVisible() {
     const current = editRef.current;
-    const point = current && preview
-      ? preview[0]!.points[current.vertex < 0 ? 0 : current.vertex]!
-      : cursorRef.current;
+    const point =
+      current && preview ? keyboardEditTargetPoint(preview[0]!, current.vertex) : cursorRef.current;
     if (!point || disabled) return;
     const next = options.revealPoint?.(point) ?? transform;
     if (current && (next.panX !== current.transform.panX || next.panY !== current.transform.panY)) {
@@ -297,7 +332,8 @@ export function useKeyboardGeometry(options: KeyboardGeometryOptions) {
       (event.key === "[" || event.key === "]" || event.key.toLowerCase() === "n")
     ) {
       if (currentEdit.base.length !== 1) return true;
-      const count = currentEdit.base[0]!.points.length;
+      const { type, points } = currentEdit.base[0]!;
+      const count = measurementEditTargetCount(type, points);
       const forward = event.key === "]" || (event.key.toLowerCase() === "n" && !event.shiftKey);
       chooseEditTarget(((currentEdit.vertex + 1 + (forward ? 1 : count)) % (count + 1)) - 1);
       return true;
@@ -344,23 +380,23 @@ export function useKeyboardGeometry(options: KeyboardGeometryOptions) {
       return true;
     }
     if (arrow && (tool === "select" || tool === "calibrate" || isMeasurementType(tool))) {
-      const origin =
-        currentEdit?.rawPoint ??
-        cursorRef.current ??
-        clampPointToPage(screenToPage(options.screenCenter, transform), bounds);
+      const origin = currentEdit?.rawPoint ?? cursorRef.current ?? resumePoint(bounds);
       const next = movementPoint(origin, event);
       const effectivePoint = currentEdit
-        ? keyboardEditPreview({
-            measurements: currentEdit.base,
-            vertex: currentEdit.vertex,
-            origin: currentEdit.origin,
-            rawPoint: next,
-            bounds,
-            zoom: transform.zoom,
-            snap,
-            orthogonal,
-            targets,
-          })[0]!.points[currentEdit.vertex < 0 ? 0 : currentEdit.vertex]!
+        ? keyboardEditTargetPoint(
+            keyboardEditPreview({
+              measurements: currentEdit.base,
+              vertex: currentEdit.vertex,
+              origin: currentEdit.origin,
+              rawPoint: next,
+              bounds,
+              zoom: transform.zoom,
+              snap,
+              orthogonal,
+              targets,
+            })[0]!,
+            currentEdit.vertex,
+          )
         : next;
       const visibleTransform = options.revealPoint?.(effectivePoint) ?? transform;
       updateCursor(next);
@@ -394,10 +430,10 @@ export function useKeyboardGeometry(options: KeyboardGeometryOptions) {
   }
 
   const effectiveCursor =
-    edit && preview ? (preview[0]?.points[edit.vertex < 0 ? 0 : edit.vertex] ?? cursor) : cursor;
+    edit && preview?.[0] ? keyboardEditTargetPoint(preview[0], edit.vertex) : cursor;
   const editAnnouncement =
     edit && effectiveCursor
-      ? `${edit.vertex < 0 ? "Moving selection" : `Editing vertex ${edit.vertex + 1}`}, X ${effectiveCursor.x.toFixed(2)}, Y ${effectiveCursor.y.toFixed(2)}. Enter saves; Escape cancels.`
+      ? `${edit.vertex < 0 ? "Moving selection" : `Editing ${measurementEditTargetLabel(edit.base[0]!.type, edit.base[0]!.points, edit.vertex).toLowerCase()}`}, X ${effectiveCursor.x.toFixed(2)}, Y ${effectiveCursor.y.toFixed(2)}. Enter saves; Escape cancels.`
       : announcement;
   return {
     cursor: effectiveCursor,

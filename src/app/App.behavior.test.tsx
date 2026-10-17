@@ -1,11 +1,10 @@
 // @vitest-environment jsdom
 
 import { chooseSelectOption } from "../components/ui/selectTestUtils";
-import { act, useEffect, useState } from "react";
+import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PDFDocumentProxy } from "pdfjs-dist";
-import type { CurrentSession, ViewTransform } from "../types/domain";
+import type { ViewTransform } from "../types/domain";
 import { getMeasurementCalibration } from "../utils/calibration";
 import { pageToScreen } from "../utils/coordinates";
 import { lineLengthMm } from "../utils/geometry";
@@ -17,15 +16,15 @@ import {
   lastAnnotationLayer,
   resetKonvaCapture,
   stageHandler,
+  type SessionLifecycleDouble,
 } from "../features/viewer/viewerTestUtils";
-import { createEmptySession } from "./sessionState";
 import { ThemeProvider } from "./themeState";
 import { App } from "./App";
 
-const lifecycle = vi.hoisted(() => ({
+const lifecycle = vi.hoisted((): SessionLifecycleDouble => ({
   loading: false,
-  session: null as CurrentSession | null,
-  pdf: null as PDFDocumentProxy | null,
+  session: null,
+  pdf: null,
 }));
 
 vi.mock("pdfjs-dist", () => ({ getDocument: vi.fn(), GlobalWorkerOptions: {} }));
@@ -33,52 +32,8 @@ vi.mock("react-konva", async () => (await import("../features/viewer/viewerTestU
 vi.mock("../features/viewer/PdfAnnotationLayer", async () =>
   (await import("../features/viewer/viewerTestUtils")).createAnnotationLayerMock());
 
-// Sustituye solo el ciclo de vida (IndexedDB, parseo de PDF, autoguardado): "abrir un PDF" carga una sesión
-// vacía de dos páginas y publica el documento doble; el resto de la aplicación es real.
-vi.mock("./usePdfSessionLifecycle", () => ({
-  usePdfSessionLifecycle: (options: {
-    session: CurrentSession | null;
-    loadSession: (session: CurrentSession) => void;
-  }) => {
-    const [activePdf, setActivePdf] = useState<{ document: PDFDocumentProxy } | null>(null);
-    const { session, loadSession } = options;
-    useEffect(() => {
-      lifecycle.session = session;
-    }, [session]);
-    return {
-      saveStatusStore: undefined,
-      activePdf: session ? activePdf : null,
-      recovery: null,
-      savedProjects: [],
-      recoveryChecked: true,
-      recoveryIssue: null,
-      confirmDiscardRecovery: false,
-      loading: lifecycle.loading,
-      autosaveWarning: null,
-      autosaveFailed: false,
-      canRetryAutosave: false,
-      projectOperationPending: false,
-      retryAutosave: () => undefined,
-      exportProject: () => undefined,
-      autosaveUnavailable: false,
-      chooseFile: async (file: File) => {
-        loadSession(createEmptySession({ name: file.name, size: file.size, lastModified: 1 }, 2));
-        setActivePdf({ document: lifecycle.pdf! });
-      },
-      openProject: () => undefined,
-      refreshSavedProjects: async () => [],
-      continueRecovery: () => undefined,
-      discardRecovery: () => undefined,
-      discardProject: async () => undefined,
-      continueWithoutRecovery: () => undefined,
-      showDiscardRecoveryConfirmation: () => undefined,
-      hideDiscardRecoveryConfirmation: () => undefined,
-      dismissAutosaveWarning: () => undefined,
-      confirmPdfReplacement: () => undefined,
-      cancelPdfReplacement: () => undefined,
-    };
-  },
-}));
+vi.mock("./usePdfSessionLifecycle", async () =>
+  (await import("../features/viewer/viewerTestUtils")).createSessionLifecycleMock(lifecycle));
 
 describe("App open, calibrate and measure flow", () => {
   let container: HTMLDivElement;
@@ -195,6 +150,26 @@ describe("App open, calibrate and measure flow", () => {
     expect(scale.end.x).toBeCloseTo(300, 6);
     expect(page().activeCalibrationId).toBe(scale.id);
     expect(document.querySelector("dialog[open]")).toBeNull();
+  });
+
+  it("hands focus to the plan when a new scale starts, so the keyboard can place it", async () => {
+    await openPdf();
+    await press("Add scale");
+    await menuItem("Uniform");
+    await vi.waitFor(() => {
+      expect(document.activeElement?.hasAttribute("data-dialog-focus-fallback")).toBe(true);
+    });
+  });
+
+  it("locks the scaled drawing tools until a scale exists and names every tool shortcut", async () => {
+    await openPdf();
+    const scaled = ["Line, shortcut L", "Polyline, shortcut M", "Polygon, shortcut P", "Rectangle, shortcut R", "Ellipse, shortcut I"];
+    for (const label of scaled) expect(button(label).getAttribute("aria-disabled"), label).toBe("true");
+    for (const label of ["Count, shortcut C", "Cloud, shortcut K"]) expect(button(label).getAttribute("aria-disabled"), label).toBeNull();
+    expect(document.querySelector("[data-dialog-focus-fallback]")?.getAttribute("aria-label")).toBe(
+      "PDF viewer, page 1. Use V, H, L, M, P, R, I, K, or C to select a tool.");
+    await calibrate();
+    for (const label of scaled) expect(button(label).getAttribute("aria-disabled"), label).toBeNull();
   });
 
   it("does not create a scale when the calibration dialog is cancelled", async () => {

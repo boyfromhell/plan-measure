@@ -16,7 +16,7 @@ import { ViewerDock, type ViewerDockProps } from "./ViewerDock";
 
 const dockCss = readFileSync("src/features/viewer/ViewerDock.module.css", "utf8");
 const buttonCss = readFileSync("src/components/ui/Button.module.css", "utf8");
-const controlStatesCss = readFileSync("src/components/ui/controlStates.module.css", "utf8");
+const controlStatesCss = readFileSync("src/components/ui/controlStates.css", "utf8");
 const popoverCss = readFileSync("src/components/ui/Popover.module.css", "utf8");
 
 let root: Root | null = null;
@@ -305,11 +305,11 @@ describe("ViewerDock", () => {
       act(() => control.focus());
       expect(document.activeElement).toBe(control);
     }
-    expect(buttonCss).toMatch(/composes:[^;]*\bfocusRing\b[^;]*controlStates\.module\.css/);
+    expect(buttonCss).toMatch(/composes:[^;]*\bfocusRing\b[^;]*from global/);
     expect(controlStatesCss).toMatch(
       /\.focusRing:focus-visible\s*\{[^}]*outline:\s*var\(--focus-outline\);/s,
     );
-    expect(popoverCss).toMatch(/\.trigger\s*\{[^}]*composes:[^;]*\bfocusRing\b[^;]*controlStates\.module\.css/s);
+    expect(popoverCss).toMatch(/\.trigger\s*\{[^}]*composes:[^;]*\bfocusRing\b[^;]*from global/s);
   });
 
   it("moves through page and zoom commands with arrows, Home, and End", () => {
@@ -410,6 +410,33 @@ describe("ViewerDock", () => {
     expect(trigger.textContent).toContain("No label");
     expect(trigger.textContent).toContain("1 / 3");
     expect(trigger.getAttribute("aria-label")).toBe("Page 1 of 3. No page label. Set page label");
+  });
+
+  it("hides the page label and zoom until the document supplies them instead of flashing defaults", () => {
+    const pendingValue = (element: Element | null | undefined) =>
+      /pendingValue/.test(element?.className ?? "");
+    const zoomValue = () =>
+      Array.from(
+        document.querySelector('[aria-label="Zoom controls"]')?.querySelectorAll("span") ?? [],
+      ).find((span) => span.textContent?.endsWith("%"));
+
+    renderDock(
+      createProps({
+        sourcePageLabel: null,
+        effectivePageLabel: "",
+        pageLabelPending: true,
+        navigation: { ...createProps().navigation, zoomPending: true },
+      }),
+    );
+    expect(pendingValue(pageLabelTrigger().querySelector("strong"))).toBe(true);
+    expect(pendingValue(zoomValue())).toBe(true);
+    expect(pageLabelTrigger().textContent).toContain("1 / 3");
+
+    renderDock(createProps());
+    expect(pendingValue(pageLabelTrigger().querySelector("strong"))).toBe(false);
+    expect(pendingValue(zoomValue())).toBe(false);
+    expect(zoomValue()?.textContent).toBe("100%");
+    expect(dockCss).toMatch(/\.pendingValue \{\s*opacity: 0;/);
   });
 
   it("opens the page-label editor with focused selected effective content and source metadata", () => {

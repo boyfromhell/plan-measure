@@ -4,7 +4,7 @@ import { useRovingFocusGroup } from "../components/ui/rovingFocus";
 import type { ClassificationDimension, MeasurementDecimalPlaces } from "../types/domain";
 import type { RecoveredPlanStartupWorkspace } from "./recoveredPlanStartupPreference";
 import { SettingsButton } from "./SettingsButton";
-import type { ProjectViewSettings } from "./SettingsDialog";
+import type { LabelPreviewMeasurement, ProjectViewSettings } from "./SettingsDialog";
 import styles from "./AppBar.module.css";
 
 const FEEDBACK_ITEMS: readonly AnchoredMenuItem[] = [
@@ -37,6 +37,7 @@ interface AppBarProps {
   savedProjectCount?: number;
   canUndo?: boolean;
   canRedo?: boolean;
+  labelPreviewMeasurement?: LabelPreviewMeasurement | null;
   measurementDecimalPlaces?: MeasurementDecimalPlaces | null;
   viewSettings?: ProjectViewSettings | null;
   classificationDimensions?: readonly ClassificationDimension[];
@@ -44,9 +45,11 @@ interface AppBarProps {
   confirmMeasurementDeletion?: boolean;
   confirmValueDeletion?: boolean;
   confirmDimensionDeletion?: boolean;
+  confirmScaleDeletion?: boolean;
   recoveredPlanStartupWorkspace?: RecoveredPlanStartupWorkspace;
   onExport: () => void;
   onOpenProjects?: () => void;
+  onCloseProject?: () => void;
   onUndo?: () => void;
   onRedo?: () => void;
   onMeasurementDecimalPlacesChange?: (decimalPlaces: MeasurementDecimalPlaces) => void;
@@ -55,6 +58,7 @@ interface AppBarProps {
   onConfirmMeasurementDeletionChange?: (enabled: boolean) => void;
   onConfirmValueDeletionChange?: (enabled: boolean) => void;
   onConfirmDimensionDeletionChange?: (enabled: boolean) => void;
+  onConfirmScaleDeletionChange?: (enabled: boolean) => void;
   onRecoveredPlanStartupWorkspaceChange?: (workspace: RecoveredPlanStartupWorkspace) => void;
 }
 
@@ -85,6 +89,14 @@ function RedoIcon() {
   );
 }
 
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+      <path d="m5.5 5.5 9 9M14.5 5.5l-9 9" />
+    </svg>
+  );
+}
+
 function FeedbackIcon() {
   return (
     <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
@@ -99,6 +111,7 @@ export function AppBar({
   savedProjectCount = 0,
   canUndo = false,
   canRedo = false,
+  labelPreviewMeasurement = null,
   measurementDecimalPlaces = null,
   viewSettings = null,
   classificationDimensions,
@@ -106,9 +119,11 @@ export function AppBar({
   confirmMeasurementDeletion = true,
   confirmValueDeletion = true,
   confirmDimensionDeletion = true,
+  confirmScaleDeletion = true,
   recoveredPlanStartupWorkspace = "scales",
   onExport,
   onOpenProjects,
+  onCloseProject,
   onUndo,
   onRedo,
   onMeasurementDecimalPlacesChange,
@@ -117,6 +132,7 @@ export function AppBar({
   onConfirmMeasurementDeletionChange,
   onConfirmValueDeletionChange,
   onConfirmDimensionDeletionChange,
+  onConfirmScaleDeletionChange,
   onRecoveredPlanStartupWorkspaceChange,
 }: AppBarProps) {
   const actionsRef = useRef<HTMLDivElement>(null);
@@ -133,6 +149,16 @@ export function AppBar({
         <div className={styles.documentName} title={documentName ?? undefined}>
           {documentName ?? "No PDF loaded"}
         </div>
+        {documentName && onCloseProject && (
+          <IconButton
+            className={styles.iconAction}
+            icon={<CloseIcon />}
+            aria-label="Close project"
+            tooltip="Close project"
+            tooltipPosition="bottom"
+            onClick={onCloseProject}
+          />
+        )}
       </div>
 
       <div
@@ -205,6 +231,7 @@ export function AppBar({
           <SettingsButton
             trigger={<SettingsIcon />}
             triggerClassName={styles.iconAction}
+            labelPreviewMeasurement={labelPreviewMeasurement}
             measurementDecimalPlaces={measurementDecimalPlaces}
             viewSettings={viewSettings}
             classificationDimensions={classificationDimensions}
@@ -212,6 +239,7 @@ export function AppBar({
             confirmMeasurementDeletion={confirmMeasurementDeletion}
             confirmValueDeletion={confirmValueDeletion}
             confirmDimensionDeletion={confirmDimensionDeletion}
+            confirmScaleDeletion={confirmScaleDeletion}
             recoveredPlanStartupWorkspace={recoveredPlanStartupWorkspace}
             onMeasurementDecimalPlacesChange={onMeasurementDecimalPlacesChange}
             onViewSettingsChange={onViewSettingsChange}
@@ -219,6 +247,7 @@ export function AppBar({
             onConfirmMeasurementDeletionChange={onConfirmMeasurementDeletionChange}
             onConfirmValueDeletionChange={onConfirmValueDeletionChange}
             onConfirmDimensionDeletionChange={onConfirmDimensionDeletionChange}
+            onConfirmScaleDeletionChange={onConfirmScaleDeletionChange}
             onRecoveredPlanStartupWorkspaceChange={onRecoveredPlanStartupWorkspaceChange}
           />
         </div>

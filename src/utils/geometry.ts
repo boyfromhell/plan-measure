@@ -60,6 +60,11 @@ export function isMeasurementType(value: string): value is MeasurementType {
   return (MEASUREMENT_TYPES as readonly string[]).includes(value);
 }
 
+/** Whether drawing this type needs an active scale; Count tallies items and Cloud marks revisions. */
+export function measurementTypeRequiresScale(type: MeasurementType): boolean {
+  return type !== "count" && type !== "cloud";
+}
+
 export function hasValidMeasurementPoints(
   type: MeasurementType,
   points: readonly Point[],
@@ -405,7 +410,41 @@ function buildPolygonEdgeTree(
   };
 }
 
+interface PolygonRingCheck {
+  coordinates: Float64Array;
+  simple: boolean;
+}
+
+// Autosave and editing revalidate every polygon on each change. Results are remembered per
+// points array together with the coordinates they were computed from, so a mutated array is
+// recomputed instead of trusted.
+const polygonRingChecks = new WeakMap<readonly Point[], PolygonRingCheck>();
+
 function hasSimplePolygonRing(points: readonly Point[]): boolean {
+  const cached = polygonRingChecks.get(points);
+  if (cached && hasSameCoordinates(cached.coordinates, points)) return cached.simple;
+  const simple = computeHasSimplePolygonRing(points);
+  const coordinates = new Float64Array(points.length * 2);
+  points.forEach((point, index) => {
+    coordinates[index * 2] = point.x;
+    coordinates[index * 2 + 1] = point.y;
+  });
+  polygonRingChecks.set(points, { coordinates, simple });
+  return simple;
+}
+
+function hasSameCoordinates(coordinates: Float64Array, points: readonly Point[]): boolean {
+  if (coordinates.length !== points.length * 2) return false;
+  for (let index = 0; index < points.length; index += 1) {
+    const point = points[index]!;
+    if (!Object.is(coordinates[index * 2], point.x) || !Object.is(coordinates[index * 2 + 1], point.y)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function computeHasSimplePolygonRing(points: readonly Point[]): boolean {
   // Adjacent edges may share only their common endpoint, including the closing pair.
   for (let index = 0; index < points.length; index += 1) {
     if (
@@ -797,6 +836,10 @@ export function measurementResultsMm(
   calibration: Calibration | PageCalibration | null,
 ): { lengthMm: number | null; perimeterMm: number | null; areaMm2: number | null } {
   if (measurement.type === "count") {
+    return { lengthMm: null, perimeterMm: null, areaMm2: null };
+  }
+  // A cloud is markup unless it is measured; without a scale it has no measures.
+  if (measurement.type === "cloud" && !calibration) {
     return { lengthMm: null, perimeterMm: null, areaMm2: null };
   }
   if (!calibration) throw new RangeError("Measurement requires a calibration.");

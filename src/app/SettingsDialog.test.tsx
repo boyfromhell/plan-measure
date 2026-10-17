@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClassificationDimension, MeasurementDecimalPlaces } from "../types/domain";
 import type { RecoveredPlanStartupWorkspace } from "./recoveredPlanStartupPreference";
 import { SettingsButton } from "./SettingsButton";
-import type { ProjectViewSettings } from "./SettingsDialog";
+import type { LabelPreviewMeasurement, ProjectViewSettings } from "./SettingsDialog";
 import {
   APP_PREFERENCES_STORAGE_KEY,
   reloadAppPreferencesFromStorage,
@@ -33,6 +33,7 @@ let container: HTMLDivElement | null = null;
 
 interface RenderOptions {
   theme?: ThemePreference;
+  labelPreviewMeasurement?: LabelPreviewMeasurement | null;
   measurementDecimalPlaces?: MeasurementDecimalPlaces | null;
   viewSettings?: ProjectViewSettings | null;
   onViewSettingsChange?: (settings: Partial<ProjectViewSettings>) => void;
@@ -41,17 +42,20 @@ interface RenderOptions {
   classificationDimensions?: ClassificationDimension[];
   confirmValueDeletion?: boolean;
   confirmDimensionDeletion?: boolean;
+  confirmScaleDeletion?: boolean;
   recoveredPlanStartupWorkspace?: RecoveredPlanStartupWorkspace;
   onMeasurementDecimalPlacesChange?: (decimalPlaces: MeasurementDecimalPlaces) => void;
   onKeyboardAuthoringEnabledChange?: (enabled: boolean) => void;
   onConfirmMeasurementDeletionChange?: (enabled: boolean) => void;
   onConfirmValueDeletionChange?: (enabled: boolean) => void;
   onConfirmDimensionDeletionChange?: (enabled: boolean) => void;
+  onConfirmScaleDeletionChange?: (enabled: boolean) => void;
   onRecoveredPlanStartupWorkspaceChange?: (workspace: RecoveredPlanStartupWorkspace) => void;
 }
 
 function renderSettings({
   theme = "system",
+  labelPreviewMeasurement = null,
   measurementDecimalPlaces = 2,
   viewSettings = null,
   classificationDimensions = [],
@@ -60,12 +64,14 @@ function renderSettings({
   confirmMeasurementDeletion = true,
   confirmValueDeletion = true,
   confirmDimensionDeletion = true,
+  confirmScaleDeletion = true,
   recoveredPlanStartupWorkspace = "scales",
   onMeasurementDecimalPlacesChange = vi.fn(),
   onKeyboardAuthoringEnabledChange,
   onConfirmMeasurementDeletionChange = vi.fn(),
   onConfirmValueDeletionChange,
   onConfirmDimensionDeletionChange,
+  onConfirmScaleDeletionChange,
   onRecoveredPlanStartupWorkspaceChange = vi.fn(),
 }: RenderOptions = {}) {
   window.localStorage.setItem(THEME_STORAGE_KEY, theme);
@@ -74,6 +80,7 @@ function renderSettings({
       <ThemeProvider>
         <SettingsButton
           trigger={<span>gear</span>}
+          labelPreviewMeasurement={labelPreviewMeasurement}
           measurementDecimalPlaces={measurementDecimalPlaces}
           viewSettings={viewSettings}
           classificationDimensions={classificationDimensions}
@@ -82,12 +89,14 @@ function renderSettings({
           confirmMeasurementDeletion={confirmMeasurementDeletion}
           confirmValueDeletion={confirmValueDeletion}
           confirmDimensionDeletion={confirmDimensionDeletion}
+          confirmScaleDeletion={confirmScaleDeletion}
           recoveredPlanStartupWorkspace={recoveredPlanStartupWorkspace}
           onMeasurementDecimalPlacesChange={onMeasurementDecimalPlacesChange}
           onKeyboardAuthoringEnabledChange={onKeyboardAuthoringEnabledChange}
           onConfirmMeasurementDeletionChange={onConfirmMeasurementDeletionChange}
           onConfirmValueDeletionChange={onConfirmValueDeletionChange}
           onConfirmDimensionDeletionChange={onConfirmDimensionDeletionChange}
+          onConfirmScaleDeletionChange={onConfirmScaleDeletionChange}
           onRecoveredPlanStartupWorkspaceChange={onRecoveredPlanStartupWorkspaceChange}
         />
         <button type="button">After settings</button>
@@ -156,6 +165,10 @@ function tab(label: string): HTMLButtonElement {
 
 function openTab(label: string) {
   act(() => tab(label).click());
+}
+
+function previewLabels(): string[] {
+  return Array.from(dialog().querySelectorAll("output"), (output) => output.textContent ?? "");
 }
 
 function choose(label: string, option: string) {
@@ -334,6 +347,7 @@ describe("SettingsDialog", () => {
         showMeasurements: true,
         showCalibration: false,
         labelClassificationDimensionId: null,
+        measureClouds: false,
       },
     });
     await openSettings();
@@ -347,6 +361,10 @@ describe("SettingsDialog", () => {
     expect(switchControl("Calibration").checked).toBe(false);
     act(() => switchControl("Calibration").click());
     expect(onViewSettingsChange).toHaveBeenLastCalledWith({ showCalibration: true });
+    expect(switchControl("Measure clouds").checked).toBe(false);
+    expect(dialog().textContent).toContain("so they may not be exact");
+    act(() => switchControl("Measure clouds").click());
+    expect(onViewSettingsChange).toHaveBeenLastCalledWith({ measureClouds: true });
   });
 
   describe("Label classification", () => {
@@ -357,6 +375,7 @@ describe("SettingsDialog", () => {
       showMeasurements: true,
       showCalibration: true,
       labelClassificationDimensionId: null,
+      measureClouds: false,
     };
     const dimensions: ClassificationDimension[] = [
       { id: "trade", name: "Trade", archived: false, values: [] },
@@ -424,6 +443,8 @@ describe("SettingsDialog", () => {
     choose("Fill opacity", "Strong");
     choose("Handle size", "Large");
     choose("Label background", "Translucent");
+    expect(selectByLabel("Label text").textContent).toBe("Auto");
+    choose("Label text", "Red");
     openTab("Drawing");
     choose("After finishing", "Select");
     openTab("Interface");
@@ -433,6 +454,7 @@ describe("SettingsDialog", () => {
       fillOpacity: "strong",
       handleSize: "large",
       labelBackground: "translucent",
+      labelTextColor: "red",
       afterFinishing: "select",
       zoomStep: "coarse",
     });
@@ -575,26 +597,126 @@ describe("SettingsDialog", () => {
     ).toBe(false);
   });
 
-  it("applies number separators to the live preview and persists them per device", async () => {
-    renderSettings();
+  it("previews sample labels with the device's number settings when no plan is open", async () => {
+    renderSettings({ measurementDecimalPlaces: null });
     await openSettings();
     openTab("Measurements");
 
-    const preview = () => dialog().querySelector("output")?.textContent;
-    expect(preview()).toBe("1234567.89");
+    const lastRow = Array.from(dialog().querySelectorAll("[class*='settingRow']")).at(-1);
+    expect(lastRow?.textContent).toContain("Default unit for new plans");
+    expect(previewLabels()).toEqual(["1234.57 m", "P 142.30 m · A 1234.57 m²"]);
     choose("Thousands separator", "Comma");
-    expect(preview()).toBe("1,234,567.89");
+    expect(previewLabels()).toEqual(["1,234.57 m", "P 142.30 m · A 1,234.57 m²"]);
     choose("Decimal separator", "Comma");
     // Same glyph for both roles is ambiguous, so grouping is dropped.
-    expect(preview()).toBe("1234567,89");
+    expect(previewLabels()[0]).toBe("1234,57 m");
     choose("Thousands separator", "Point");
-    expect(preview()).toBe("1.234.567,89");
+    expect(previewLabels()[0]).toBe("1.234,57 m");
+    choose("Label content", "Name and value");
+    expect(previewLabels()).toEqual(["Wall · 1.234,57 m", "Room · P 142,30 m · A 1.234,57 m²"]);
+    // Without a plan the samples use the unit new plans start with.
+    choose("Default unit for new plans", "Millimetres");
+    expect(previewLabels()[0]).toBe("Wall · 1.234.567,89 mm");
     expect(
       JSON.parse(window.localStorage.getItem(APP_PREFERENCES_STORAGE_KEY) ?? "{}"),
     ).toMatchObject({
       thousandsSeparator: "point",
       decimalSeparator: "comma",
     });
+  });
+
+  it("previews the plan's unit, decimals, area display and label classification", async () => {
+    renderSettings({
+      measurementDecimalPlaces: 1,
+      viewSettings: {
+        displayUnit: "ft",
+        areaDisplay: "ac",
+        showLabels: true,
+        showMeasurements: true,
+        showCalibration: true,
+        labelClassificationDimensionId: "phase",
+        measureClouds: false,
+      },
+      classificationDimensions: [
+        {
+          id: "phase",
+          name: "Phase",
+          archived: false,
+          values: [
+            { id: "old", name: "Old", archived: true },
+            { id: "new", name: "New", archived: false },
+          ],
+        },
+      ],
+    });
+    await openSettings();
+    openTab("Measurements");
+
+    expect(dialog().textContent).toContain("Sample measurements");
+    expect(previewLabels()).toEqual(["New · 4050.4 ft", "New · P 466.9 ft · A 0.3 ac"]);
+  });
+
+  it("previews the selected measurement's own label", async () => {
+    const measurement: LabelPreviewMeasurement["measurement"] = {
+      type: "line",
+      name: "Beam",
+      points: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+      ],
+      classificationValueIds: ["old"],
+    };
+    const viewSettings: ProjectViewSettings = {
+      displayUnit: "cm",
+      areaDisplay: "auto",
+      showLabels: true,
+      showMeasurements: true,
+      showCalibration: true,
+      labelClassificationDimensionId: "phase",
+      measureClouds: false,
+    };
+    const classificationDimensions: ClassificationDimension[] = [
+      {
+        id: "phase",
+        name: "Phase",
+        archived: false,
+        values: [{ id: "old", name: "Old", archived: true }],
+      },
+    ];
+    renderSettings({
+      viewSettings,
+      classificationDimensions,
+      labelPreviewMeasurement: {
+        measurement,
+        calibration: {
+          id: "scale",
+          name: "1:50",
+          mode: "uniform",
+          start: { x: 0, y: 0 },
+          end: { x: 10, y: 0 },
+          referenceDistanceMm: 500,
+        },
+      },
+    });
+    await openSettings();
+    openTab("Measurements");
+
+    expect(dialog().textContent).toContain("Selected measurement");
+    expect(dialog().querySelector("dt")?.textContent).toBe("Beam");
+    // An archived value still labels the measurement that has it, as on the canvas.
+    expect(previewLabels()).toEqual(["Old · 500.00 cm"]);
+    choose("Label content", "Name and value");
+    expect(previewLabels()).toEqual(["Beam · Old · 500.00 cm"]);
+
+    act(() => root!.unmount());
+    root = createRoot(container!);
+    renderSettings({
+      viewSettings,
+      labelPreviewMeasurement: { measurement, calibration: null },
+    });
+    await openSettings();
+    openTab("Measurements");
+    expect(previewLabels()).toEqual(["No label until it has a scale"]);
   });
 
   it("toggles reduce motion and tooltips through document attributes", async () => {
@@ -760,6 +882,38 @@ describe("SettingsDialog", () => {
     expect((dialog() as HTMLDialogElement).open).toBe(true);
   });
 
+  it("confirms scale deletion by default and resets the opt-out", async () => {
+    const onConfirmScaleDeletionChange = vi.fn();
+    renderSettings({ confirmScaleDeletion: false, onConfirmScaleDeletionChange });
+    await openSettings();
+    openTab("Confirmations");
+
+    const labels = Array.from(dialog().querySelectorAll('[role="switch"]')).map((control) =>
+      control.getAttribute("aria-label"),
+    );
+    expect(labels.indexOf("Confirm before deleting scales")).toBe(
+      labels.indexOf("Confirm before deleting measurements") + 1,
+    );
+    const scales = switchControl("Confirm before deleting scales");
+    expect(scales.checked).toBe(false);
+    act(() => scales.click());
+    expect(onConfirmScaleDeletionChange).toHaveBeenLastCalledWith(true);
+
+    onConfirmScaleDeletionChange.mockClear();
+    openTab("Advanced");
+    act(() =>
+      Array.from(dialog().querySelectorAll("button"))
+        .find((button) => button.textContent === "Reset…")!
+        .click(),
+    );
+    act(() =>
+      Array.from(dialog().querySelectorAll("button"))
+        .find((button) => button.textContent === "Reset")!
+        .click(),
+    );
+    expect(onConfirmScaleDeletionChange).toHaveBeenCalledWith(true);
+  });
+
   it("renders the recovered workspace select with exact options", async () => {
     const { onRecoveredPlanStartupWorkspaceChange } = renderSettings();
     await openSettings();
@@ -813,6 +967,7 @@ describe("SettingsDialog", () => {
         showMeasurements: true,
         showCalibration: true,
         labelClassificationDimensionId: null,
+        measureClouds: false,
       },
     });
     await openSettings();
@@ -825,9 +980,18 @@ describe("SettingsDialog", () => {
       "About Recovered plan workspace",
     ]);
     openTab("View");
-    expect(helpLabels()).toEqual(["About Polygon area", "About Label classification"]);
+    expect(helpLabels()).toEqual([
+      "About Polygon area",
+      "About Measure clouds",
+      "About Label classification",
+      "About Labels",
+      "About Measurements",
+      "About Calibration",
+    ]);
+    // Where canvas appearance lives is told in the visibility tooltips, not in a note below them.
+    expect(dialog().textContent).not.toContain("appearance settings are in");
     openTab("Canvas");
-    expect(helpLabels()).toEqual([]);
+    expect(helpLabels()).toEqual(["About Label text"]);
     openTab("Confirmations");
     expect(helpLabels()).toEqual([]);
     openTab("Performance");

@@ -15,7 +15,6 @@ import type {
   LogicalPageBounds,
   PageCalibration,
   PageState,
-  Point,
   Tool,
 } from "../types/domain";
 import {
@@ -24,7 +23,7 @@ import {
   getActiveCalibration,
   isValidCalibrationReferenceEdit,
 } from "../utils/calibration";
-import { isMeasurementType } from "../utils/geometry";
+import { isMeasurementType, measurementTypeRequiresScale } from "../utils/geometry";
 import { calibrationMeasurementCount, calibrationReferenceEditPreview } from "./appDerivations";
 import { beginCalibrationFlow } from "./calibrationFlow";
 import {
@@ -77,6 +76,10 @@ interface CalibrationActionsContext {
   setConfirmMeasurementDeletion: (enabled: boolean) => void;
   editMeasurements: SessionState["editMeasurements"];
   performMeasurementDelete: (request: MeasurementDeleteRequest) => void;
+  confirmScaleDeletion: boolean;
+  setConfirmScaleDeletion: (enabled: boolean) => void;
+  openDeleteScaleConfirmation: OverlayState["requestDeleteScale"];
+  deleteCalibration: SessionState["deleteCalibration"];
 }
 
 // These actions are intentionally plain functions recreated on every render.
@@ -118,6 +121,10 @@ export function useCalibrationActions({
   setConfirmMeasurementDeletion,
   editMeasurements,
   performMeasurementDelete,
+  confirmScaleDeletion,
+  setConfirmScaleDeletion,
+  openDeleteScaleConfirmation,
+  deleteCalibration,
 }: CalibrationActionsContext) {
   function chooseTool(tool: Tool) {
     if (tool !== "calibrate") scaleCheckStore.clear();
@@ -134,7 +141,10 @@ export function useCalibrationActions({
     if (isMeasurementType(tool) && precisionAuthoringBlocked) {
       return;
     }
-    if (isMeasurementType(tool) && (!currentPage || (tool !== "count" && !activePageCalibration))) {
+    if (
+      isMeasurementType(tool) &&
+      (!currentPage || (measurementTypeRequiresScale(tool) && !activePageCalibration))
+    ) {
       clearDraft();
       chooseWorkspaceTool("select");
       setError("Select a valid scale before creating measurements.");
@@ -180,6 +190,8 @@ export function useCalibrationActions({
     if (!currentPage) return;
     startCalibration(beginCalibrationFlow(currentPage.pageNumber, null, mode));
     chooseTool("calibrate");
+    // Hand focus to the plan so keyboard drawing can place the reference right away.
+    focusViewer();
   }
 
   function addStandardScalePreset(ratio: StandardScalePresetRatio) {
@@ -306,9 +318,8 @@ export function useCalibrationActions({
     focusViewer();
   }
 
-  function updateCalibrationReferenceEdit(points: [Point, Point]) {
-    updateReferenceEdit(points);
-  }
+  // Passed down to every measurement shape's layer, so it keeps the stable dispatcher's identity.
+  const updateCalibrationReferenceEdit = updateReferenceEdit;
 
   function cancelCalibrationReferenceEdit() {
     cancelReferenceEdit();
@@ -357,6 +368,16 @@ export function useCalibrationActions({
     focusViewer();
   }
 
+  function requestScaleDelete(pageNumber: number, calibration: PageCalibration) {
+    if (calibrationFlow || calibrationReferenceEdit) {
+      setError("Finish or cancel the current scale workflow first.");
+      return;
+    }
+    const payload = { pageNumber, calibrationId: calibration.id, calibrationName: calibration.name };
+    if (confirmScaleDeletion) openDeleteScaleConfirmation(payload);
+    else deleteCalibration(payload);
+  }
+
   function handleOverlayConfirmationConfirm(
     confirmation: OverlayConfirmation,
     options?: { dontAskAgain?: boolean },
@@ -377,6 +398,14 @@ export function useCalibrationActions({
       if (confirmation.payload.measurementIds) {
         if (editMeasurements({ measurementIds: confirmation.payload.measurementIds, operation: { type: "delete" } })) clearSelection();
       } else performMeasurementDelete(confirmation.payload);
+      return;
+    }
+    if (confirmation.type === "deleteScale") {
+      if (options?.dontAskAgain) setConfirmScaleDeletion(false);
+      deleteCalibration({
+        pageNumber: confirmation.payload.pageNumber,
+        calibrationId: confirmation.payload.calibrationId,
+      });
       return;
     }
 
@@ -418,6 +447,7 @@ export function useCalibrationActions({
     addCustomRatioScale,
     setScaleRatio,
     requestRecalibration,
+    requestScaleDelete,
     assignClassification,
     beginCalibrationReferenceEdit,
     updateCalibrationReferenceEdit,

@@ -109,7 +109,9 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
         ...state,
         activeTool: "select",
         selectedMeasurementId: null,
-        selectedMeasurementIds: [],
+        // An empty selection keeps its array, so the outgoing page does not render again for it.
+        selectedMeasurementIds:
+          state.selectedMeasurementIds.length === 0 ? state.selectedMeasurementIds : [],
         draft: null,
         calibrationFlow: null,
         calibrationCandidate: null,
@@ -348,9 +350,9 @@ const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(workspaceReducer, undefined, createInitialWorkspaceState);
-  const value = useMemo(
+  // Actions only close over the stable dispatch, so consumers' memoization survives state changes.
+  const actions = useMemo(
     () => ({
-      ...state,
       resetWorkspace: (module?: WorkspaceModule) => dispatch({ type: "RESET_WORKSPACE", module }),
       pageChanged: () => dispatch({ type: "PAGE_CHANGED" }),
       chooseTool: (tool: Tool, options?: { keepSelection?: boolean }) =>
@@ -398,8 +400,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       openMeasurementDetails: () => dispatch({ type: "OPEN_MEASUREMENT_DETAILS" }),
       closeMeasurementDetails: () => dispatch({ type: "CLOSE_MEASUREMENT_DETAILS" }),
     }),
-    [state],
+    [],
   );
+  const value = useMemo(() => ({ ...state, ...actions }), [state, actions]);
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
 

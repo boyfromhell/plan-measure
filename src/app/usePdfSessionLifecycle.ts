@@ -20,6 +20,7 @@ import {
   activateSavedProject,
   beginSessionMetadataSaveOnPageExit,
   copyPdfBlob,
+  closeActiveSession,
   discardSavedProject,
   discardSavedSession,
   listSavedProjects,
@@ -40,8 +41,13 @@ import type { RecoveredPlanStartupWorkspace } from "./recoveredPlanStartupPrefer
 import type { WorkspaceModule } from "./workspaceState";
 import sampleProjectUrl from "../../assets/orchard-house-sample.planmeasure?url";
 
+const importPdfRuntime = () => import("../services/pdf");
+
+/** Downloads PDF.js ahead of the first plan so opening one does not wait for it. */
+export const preloadPdfRuntime = (): Promise<void> => importPdfRuntime().then(() => undefined);
+
 async function loadPdfRuntime(blob: Blob): Promise<LoadedPdf> {
-  const { loadPdf } = await import("../services/pdf");
+  const { loadPdf } = await importPdfRuntime();
   return loadPdf(blob);
 }
 
@@ -1018,6 +1024,75 @@ export function usePdfSessionLifecycle({
     }
   }
 
+  async function closeProject(options: { discardUnsavedProject?: boolean } = {}) {
+    if (!currentSessionRef.current || !canLeaveCurrentProject()) return;
+    // A project that exists only in memory (storage failed) is lost when it is closed.
+    if (hasUnsavedMemoryProject() && !options.discardUnsavedProject) return;
+    const loadGeneration = pdfLoadLifecycleRef.current.begin();
+    latestPdfLoadRef.current = null;
+    updateLoadingState();
+    let previousAutosaveStatus: AutosaveStatus | null = null;
+    try {
+      await enqueueActiveProjectOperation(async () => {
+        if (disposedRef.current || !pdfLoadLifecycleRef.current.isCurrent(loadGeneration)) return;
+        previousAutosaveStatus = autosaveStatusRef.current;
+        persistenceGenerationRef.current += 1;
+        updateAutosaveStatus("inactive");
+        cancelWorkspaceCalibration();
+        closeConfirmation();
+        cancelReferenceEdit();
+        await saveQueueRef.current.catch(() => undefined);
+        const currentSession = currentSessionRef.current;
+        const expectedRevision = persistenceRevisionRef.current;
+        if (expectedRevision !== undefined) {
+          await closeActiveSession(
+            expectedRevision,
+            currentSession && persistedSessionRef.current && isSessionPersistable(currentSession)
+              ? currentSession
+              : undefined,
+          );
+        }
+        const previousPdf = activePdfRef.current;
+        activePdfRef.current = null;
+        if (previousPdf) retiredPdfsRef.current.push(previousPdf);
+        persistenceRevisionRef.current = null;
+        activeProjectIdRef.current = null;
+        setActiveProjectId(null);
+        persistedSessionRef.current = null;
+        currentSessionRef.current = null;
+        if (disposedRef.current) return;
+        setActivePdf(null);
+        setPdfBlob(null);
+        setAutosaveWarning(null);
+        setRecovery(null);
+        setRecoveryIssue(null);
+        setRecoveryProtected(false);
+        setConfirmDiscardRecovery(false);
+        setError(null);
+        clearSession();
+        resetWorkspace();
+        closeAllOverlays();
+        try {
+          setSavedProjects(await listSavedProjects());
+        } catch (error) {
+          console.error("Could not refresh saved projects.", error);
+        }
+      });
+    } catch (error) {
+      if (
+        previousAutosaveStatus &&
+        autosaveStatusRef.current !== "unavailable" &&
+        currentSessionRef.current &&
+        activePdfRef.current
+      ) {
+        updateAutosaveStatus(previousAutosaveStatus);
+      }
+      if (disposedRef.current || !pdfLoadLifecycleRef.current.isCurrent(loadGeneration)) return;
+      console.error("Could not close the project.", error);
+      setError("The project could not be closed.");
+    }
+  }
+
   async function discardProject(projectId: string) {
     const loadGeneration = pdfLoadLifecycleRef.current.begin();
     latestPdfLoadRef.current = null;
@@ -1208,6 +1283,7 @@ export function usePdfSessionLifecycle({
     continueRecovery,
     discardRecovery,
     discardProject,
+    closeProject,
     continueWithoutRecovery,
     showDiscardRecoveryConfirmation,
     hideDiscardRecoveryConfirmation,
