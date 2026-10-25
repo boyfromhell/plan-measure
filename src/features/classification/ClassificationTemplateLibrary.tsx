@@ -1,5 +1,14 @@
 import { useState, type FormEvent } from "react";
-import { Button, ChevronDownIcon, Input } from "../../components/ui";
+import {
+  Button,
+  CheckIcon,
+  Disclosure,
+  IconButton,
+  ImportIcon,
+  InlineField,
+  SaveIcon,
+  TrashIcon,
+} from "../../components/ui";
 import type { ClassificationCatalog } from "../../types/domain";
 import { classificationNameKey } from "../../utils/classificationNames";
 import {
@@ -12,6 +21,9 @@ import {
 } from "./classificationTemplates";
 import styles from "./ClassificationWorkspace.module.css";
 
+const APPLY_NOTE = "Apply to project: adds missing entries and keeps existing assignments.";
+const SAVE_NOTE = "Save as template: active dimensions and values only.";
+
 export function ClassificationTemplateLibrary({
   catalog,
   disabled,
@@ -23,30 +35,43 @@ export function ClassificationTemplateLibrary({
 }) {
   const [library, setLibrary] = useState(readClassificationTemplates);
   const [name, setName] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
   const [status, setStatus] = useState("");
+  const [applied, setApplied] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const dimensions = templateDimensions(catalog);
   const canSave = validTemplateDimensions(dimensions);
 
-  function persist(templates: ClassificationTemplate[], message: string) {
+  function clearErrors() {
+    setSaveError(null);
+    setListError(null);
+  }
+
+  function persist(
+    templates: ClassificationTemplate[],
+    message: string,
+    report: (message: string | null) => void,
+  ) {
     const latest = readClassificationTemplates();
     if (latest.error || JSON.stringify(latest.templates) !== JSON.stringify(library.templates)) {
       setLibrary(latest);
-      setError(
+      report(
         latest.error
           ? null
           : "Saved templates changed in another window. Review the updated library and try again.",
       );
       setStatus("");
+      setApplied(null);
       setDeleting(null);
       return false;
     }
     const failure = writeClassificationTemplates(templates);
-    setError(failure);
+    report(failure);
     if (failure) return false;
     setLibrary({ templates, error: null });
     setStatus(message);
+    setApplied(null);
     return true;
   }
 
@@ -59,13 +84,15 @@ export function ClassificationTemplateLibrary({
         (template) => classificationNameKey(template.name) === classificationNameKey(trimmed),
       )
     ) {
-      setError("Template names must be unique. Choose another name.");
+      setSaveError("Template names must be unique. Choose another name.");
       return;
     }
+    clearErrors();
     if (
       persist(
         [...library.templates, { id: crypto.randomUUID(), name: trimmed, dimensions }],
         `Template “${trimmed}” saved.`,
+        setSaveError,
       )
     )
       setName("");
@@ -78,12 +105,12 @@ export function ClassificationTemplateLibrary({
           {library.error}
         </p>
       )}
-      {error && (
+      {listError && (
         <p className={styles.feedback} role="alert">
-          {error}
+          {listError}
         </p>
       )}
-      <p className={status ? styles.feedback : styles.visuallyHidden} role="status">
+      <p className={styles.visuallyHidden} role="status">
         {status}
       </p>
       {!library.error && !library.templates.length && (
@@ -94,27 +121,43 @@ export function ClassificationTemplateLibrary({
           </p>
         </div>
       )}
-      <ul className={styles.templates} aria-label="Saved classification templates">
-        {library.templates.map((template) => {
-          const valueCount = template.dimensions.reduce(
-            (total, dimension) => total + dimension.values.length,
-            0,
-          );
-          return (
-            <li className={styles.template} key={template.id}>
-              <details className={styles.disclosure}>
-                <summary className={styles.templateSummary}>
-                  <span className={styles.identity}>
-                    <strong title={template.name}>{template.name}</strong>
-                    <span className={styles.note}>
+      {library.templates.length > 0 && (
+        <ul className={styles.templates} aria-label="Saved classification templates">
+          {library.templates.map((template) => {
+            const valueCount = template.dimensions.reduce(
+              (total, dimension) => total + dimension.values.length,
+              0,
+            );
+            return (
+              <li className={styles.template} key={template.id}>
+                <Disclosure
+                  title={template.name}
+                  subtitle={
+                    <>
                       {template.dimensions.length}{" "}
                       {template.dimensions.length === 1 ? "dimension" : "dimensions"} · {valueCount}{" "}
                       {valueCount === 1 ? "value" : "values"}
-                    </span>
-                  </span>
-                  <ChevronDownIcon className={styles.chevron} />
-                </summary>
-                <div className={styles.templateBody}>
+                    </>
+                  }
+                  actions={
+                    <IconButton
+                      icon={applied === template.id ? <CheckIcon /> : <ImportIcon />}
+                      tooltip={applied === template.id ? "Applied" : APPLY_NOTE}
+                      disabled={disabled}
+                      aria-label={`Apply template ${template.name}`}
+                      onClick={() => {
+                        if (disabled) return;
+                        if (onApply(template.dimensions)) {
+                          clearErrors();
+                          setStatus(`Template “${template.name}” applied.`);
+                          setApplied(template.id);
+                        } else {
+                          setApplied(null);
+                        }
+                      }}
+                    />
+                  }
+                >
                   <dl className={styles.preview}>
                     {template.dimensions.map((dimension) => (
                       <div key={dimension.name}>
@@ -124,22 +167,24 @@ export function ClassificationTemplateLibrary({
                     ))}
                   </dl>
                   {deleting === template.id ? (
-                    <div className={styles.templateActions}>
+                    <div className={`${styles.templateActions} ${styles.confirm}`}>
                       <p className={styles.note}>
-                        Delete this template? Applied classifications are preserved.
+                        Delete this template? Applied classifications are kept.
                       </p>
                       <Button size="compact" variant="ghost" onClick={() => setDeleting(null)}>
                         Cancel
                       </Button>
                       <Button
                         size="compact"
-                        variant="dangerSecondary"
+                        variant="danger"
                         disabled={disabled}
                         onClick={() => {
+                          clearErrors();
                           if (
                             persist(
                               library.templates.filter((item) => item.id !== template.id),
                               `Template “${template.name}” deleted.`,
+                              setListError,
                             )
                           )
                             setDeleting(null);
@@ -149,77 +194,49 @@ export function ClassificationTemplateLibrary({
                       </Button>
                     </div>
                   ) : (
-                    <>
-                      <div className={styles.templateActions}>
-                        <Button
-                          size="compact"
-                          variant="secondary"
-                          disabled={disabled}
-                          aria-label={`Apply template ${template.name}`}
-                          onClick={() => {
-                            if (disabled) return;
-                            if (onApply(template.dimensions)) {
-                              setError(null);
-                              setStatus(`Template “${template.name}” applied.`);
-                            }
-                          }}
-                        >
-                          Apply to project
-                        </Button>
-                        <Button
-                          size="compact"
-                          variant="ghost"
-                          disabled={disabled}
-                          aria-label={`Delete template ${template.name}`}
-                          onClick={() => setDeleting(template.id)}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                      <p className={styles.note}>
-                        Adds missing entries and keeps existing assignments. Restore matching
-                        archived entries first.
-                      </p>
-                    </>
+                    <div className={styles.templateActions}>
+                      <IconButton
+                        icon={<TrashIcon />}
+                        tone="danger"
+                        tooltip="Delete"
+                        disabled={disabled}
+                        aria-label={`Delete template ${template.name}`}
+                        onClick={() => setDeleting(template.id)}
+                      />
+                    </div>
                   )}
-                </div>
-              </details>
-            </li>
-          );
-        })}
-      </ul>
-      <details className={styles.disclosure}>
-        <summary className={styles.saveSummary}>
-          <span>Save project as template</span>
-          <ChevronDownIcon className={styles.chevron} />
-        </summary>
-        <form className={styles.saveForm} onSubmit={save}>
-          <p className={styles.note}>Active dimensions and values only.</p>
-          {!canSave && (
-            <p className={styles.note}>
-              Create an active dimension with unique names before saving.
-            </p>
-          )}
-          <Input
-            label="Template name"
-            value={name}
-            disabled={disabled || !!library.error || !canSave}
-            placeholder="e.g. Residential finishes"
-            onChange={(event) => {
-              setName(event.target.value);
-              setError(null);
-            }}
-          />
-          <Button
+                </Disclosure>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <InlineField
+        variant="row"
+        label="Save project as template"
+        value={name}
+        error={saveError}
+        disabled={disabled || !!library.error || !canSave}
+        placeholder="Template name"
+        onChange={(event) => {
+          setName(event.target.value);
+          setSaveError(null);
+        }}
+        onSubmit={save}
+        actions={
+          <IconButton
             type="submit"
-            size="compact"
-            variant="secondary"
+            tone="primary"
+            icon={<SaveIcon />}
+            tooltip={SAVE_NOTE}
+            aria-label="Save template"
             disabled={disabled || !!library.error || !canSave || !name.trim()}
-          >
-            Save template
-          </Button>
-        </form>
-      </details>
+            disabledReason={
+              canSave ? undefined : "Create an active dimension with unique names before saving."
+            }
+          />
+        }
+      />
     </section>
   );
 }

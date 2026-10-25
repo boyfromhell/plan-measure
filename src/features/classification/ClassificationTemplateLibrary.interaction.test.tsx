@@ -30,16 +30,26 @@ function render(source = catalog, disabled = false) {
     ),
   );
 }
-function click(label: string) {
-  const button = [...container.querySelectorAll("button")].find(
+function findButton(label: string) {
+  return [...container.querySelectorAll("button")].find(
     (button) => button.getAttribute("aria-label") === label || button.textContent?.trim() === label,
   );
+}
+function click(label: string) {
+  let button = findButton(label);
+  if (!button) {
+    act(() =>
+      container
+        .querySelectorAll<HTMLButtonElement>("button[aria-expanded='false']")
+        .forEach((toggle) => toggle.click()),
+    );
+    button = findButton(label);
+  }
   if (!button) throw new Error(`Missing button ${label}`);
-  act(() => {
-    const disclosure = button.closest("details");
-    if (disclosure && !disclosure.open) disclosure.querySelector("summary")!.click();
-    button.click();
-  });
+  act(() => button.click());
+}
+function toggles() {
+  return [...container.querySelectorAll<HTMLButtonElement>("ul button[aria-expanded]")];
 }
 function name(value: string) {
   const input = container.querySelector("input")!;
@@ -49,8 +59,6 @@ function name(value: string) {
   });
 }
 function save(value = "Residential") {
-  const disclosure = container.querySelector("form")!.closest("details")!;
-  if (!disclosure.open) act(() => disclosure.querySelector("summary")!.click());
   name(value);
   click("Save template");
 }
@@ -72,23 +80,47 @@ afterEach(() => {
 });
 
 describe("template library interactions", () => {
-  it("keeps saving and template details collapsed until requested", () => {
+  it("keeps template details collapsed until requested and the save form always visible", () => {
     writeClassificationTemplates([
       { id: "a", name: "Residential", dimensions: [{ name: "Trade", values: ["Electrical"] }] },
     ]);
     render();
-    const template = container.querySelector("ul details") as HTMLDetailsElement;
-    const saving = container.querySelector("form")!.closest("details")!;
-    expect(template.open).toBe(false);
-    expect(saving.open).toBe(false);
-    expect(template.querySelector("summary svg")?.getAttribute("aria-hidden")).toBe("true");
-    act(() => template.querySelector("summary")!.click());
-    expect(template.open).toBe(true);
-    act(() => template.querySelector("summary")!.click());
-    expect(template.open).toBe(false);
-    act(() => saving.querySelector("summary")!.click());
-    expect(saving.open).toBe(true);
+    const [toggle] = toggles();
+    expect(toggle!.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector("dl")).toBeNull();
+    expect(container.querySelector("form")!.closest("ul")).toBeNull();
+    expect(container.querySelector("form input")!.hasAttribute("disabled")).toBe(false);
+    expect(toggle!.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+    act(() => toggle!.click());
+    expect(toggle!.getAttribute("aria-expanded")).toBe("true");
+    expect(container.querySelector("dl")).not.toBeNull();
+    act(() => toggle!.click());
+    expect(toggle!.getAttribute("aria-expanded")).toBe("false");
   });
+
+  it("applies from the closed row without opening it and clears the result on the next change", () => {
+    writeClassificationTemplates([
+      { id: "a", name: "Residential", dimensions: [{ name: "Trade", values: ["Electrical"] }] },
+    ]);
+    render();
+    const apply = findButton("Apply template Residential")!;
+    expect(toggles()[0]!.contains(apply)).toBe(false);
+    expect(container.querySelector('[role="status"]')!.textContent).toBe("");
+    click("Apply template Residential");
+    expect(toggles()[0]!.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector('[role="status"]')!.textContent).toContain("applied");
+    save("Commercial");
+    expect(container.querySelector('[role="status"]')!.textContent).not.toContain("applied");
+  });
+
+  it("reports a duplicate name under the save field", () => {
+    render();
+    save();
+    save("residential");
+    const alert = container.querySelector("form [role='alert']");
+    expect(alert!.textContent).toContain("unique");
+  });
+
   it("refreshes a stale library before saving so another window's templates are preserved", () => {
     render();
     const other = {
@@ -130,7 +162,9 @@ describe("template library interactions", () => {
     render();
     expect(container.textContent).toContain("No templates yet");
     save();
-    expect(container.querySelector("summary")!.textContent).toContain("Residential");
+    expect(toggles()[0]!.textContent).toContain("Residential");
+    expect(container.querySelector("dl")).toBeNull();
+    act(() => toggles()[0]!.click());
     expect(container.querySelector("dl")!.textContent).toContain("TradeElectrical");
     act(() => root.unmount());
     root = createRoot(container);
@@ -141,7 +175,7 @@ describe("template library interactions", () => {
     click("Delete template Residential");
     expect(readClassificationTemplates().templates).toHaveLength(1);
     click("Cancel");
-    expect(container.querySelector("summary")).not.toBeNull();
+    expect(toggles()).toHaveLength(1);
     click("Delete template Residential");
     click("Delete template");
     expect(readClassificationTemplates().templates).toEqual([]);
@@ -162,7 +196,7 @@ describe("template library interactions", () => {
     });
     save();
     expect(container.querySelector('[role="alert"]')!.textContent).toContain("could not be saved");
-    expect(container.querySelector("ul summary")).toBeNull();
+    expect(toggles()).toHaveLength(0);
     expect(container.querySelector("input")!.value).toBe("Residential");
     vi.restoreAllMocks();
     click("Save template");
@@ -183,7 +217,11 @@ describe("template library interactions", () => {
     render({ dimensions: [] });
     expect(container.querySelector("input")!.disabled).toBe(true);
     render(catalog, true);
-    expect([...container.querySelectorAll("button")].every((button) => button.disabled)).toBe(true);
+    expect(
+      [...container.querySelectorAll("button:not([aria-expanded])")].every(
+        (button) => (button as HTMLButtonElement).disabled,
+      ),
+    ).toBe(true);
     click("Apply template Residential");
     expect(apply).not.toHaveBeenCalled();
   });
