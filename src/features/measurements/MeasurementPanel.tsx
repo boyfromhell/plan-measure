@@ -33,7 +33,8 @@ const MeasurementFilterFields = recoverableLazy(
   ),
   "Filters",
 );
-export const preloadMeasurementFilters = MeasurementFilterFields.preload;
+export const preloadMeasurementFilters = () =>
+  MeasurementFilterFields.preload().catch(() => undefined);
 
 function FilterIcon() {
   return (
@@ -46,7 +47,7 @@ function FilterIcon() {
 function GroupIcon() {
   return (
     <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-      <path d="M3.33 5h13.34M9.17 10h7.5M9.17 15h7.5M5.83 5v10h1.67M5.83 10h1.67" />
+      <path d="M3.33 5h13.34M5.83 5v10M5.83 10h10.84M5.83 15h10.84" />
     </svg>
   );
 }
@@ -244,6 +245,8 @@ export const MeasurementPanel = memo(function MeasurementPanel({
             "aria-label": activeFilterCount
               ? `Filters, ${activeFilterCount} active`
               : "Filters",
+            onPointerEnter: preloadMeasurementFilters,
+            onFocus: preloadMeasurementFilters,
           }}
           tooltip={activeFilterCount ? `Filters · ${activeFilterCount} active` : "Filters"}
           tooltipPosition="bottom"
