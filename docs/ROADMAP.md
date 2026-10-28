@@ -8,15 +8,13 @@ No issue is assigned right now. Want one? Comment on it and wait for the assignm
 
 ## Now: open bugs
 
-| Issue                                                       | Bug                                                        | Area            | Priority              |
-| ----------------------------------------------------------- | ---------------------------------------------------------- | --------------- | --------------------- |
-| [#373](https://github.com/userfypp/plan-measure/issues/373) | Annotated PDF export fails for cloud names outside Latin-1 | Viewer          | P2                    |
-| [#374](https://github.com/userfypp/plan-measure/issues/374) | Undo records a step for commands that change nothing       | Measurements    | P2                    |
-| [#272](https://github.com/userfypp/plan-measure/issues/272) | Right-clicking a measurement changes the selection         | Viewer          | P3 · good first issue |
-| [#300](https://github.com/userfypp/plan-measure/issues/300) | Lowering maximum zoom does not update the view             | Viewer          | P3 · good first issue |
-| [#302](https://github.com/userfypp/plan-measure/issues/302) | Collapsing one imported group collapses another            | Classifications | P3 · good first issue |
-| [#295](https://github.com/userfypp/plan-measure/issues/295) | Drag previews drop label prefixes                          | Viewer          | P3                    |
-| [#296](https://github.com/userfypp/plan-measure/issues/296) | The page grid disappears when panning large pages          | Viewer          | P3                    |
+| Issue                                                       | Bug                                                | Area            | Priority              |
+| ----------------------------------------------------------- | -------------------------------------------------- | --------------- | --------------------- |
+| [#272](https://github.com/userfypp/plan-measure/issues/272) | Right-clicking a measurement changes the selection | Viewer          | P3 · good first issue |
+| [#300](https://github.com/userfypp/plan-measure/issues/300) | Lowering maximum zoom does not update the view     | Viewer          | P3 · good first issue |
+| [#302](https://github.com/userfypp/plan-measure/issues/302) | Collapsing one imported group collapses another    | Classifications | P3 · good first issue |
+| [#295](https://github.com/userfypp/plan-measure/issues/295) | Drag previews drop label prefixes                  | Viewer          | P3                    |
+| [#296](https://github.com/userfypp/plan-measure/issues/296) | The page grid disappears when panning large pages  | Viewer          | P3                    |
 
 ## Next (P2)
 
@@ -48,17 +46,17 @@ A review of the whole test suite (October 2026) is grouped into the issues below
 
 | Priority | Issue                                                       | Work                                                                   | Notes                                  |
 | -------- | ----------------------------------------------------------- | ---------------------------------------------------------------------- | -------------------------------------- |
-| P1       | [#375](https://github.com/userfypp/plan-measure/issues/375) | Cover Undo and Redo semantics for every session command                |                                        |
-| P1       | [#376](https://github.com/userfypp/plan-measure/issues/376) | Cover project open, close, discard and recovery failures               |                                        |
-| P1       | [#377](https://github.com/userfypp/plan-measure/issues/377) | Pin geometry, coordinate, unit and format math with independent values |                                        |
-| P1       | [#378](https://github.com/userfypp/plan-measure/issues/378) | Cover persistence failures and schema migrations with real older data  |                                        |
+| P1       | [#375](https://github.com/userfypp/plan-measure/issues/375) | Cover Undo and Redo semantics for every session command                | Part done (#413)                       |
+| P1       | [#376](https://github.com/userfypp/plan-measure/issues/376) | Cover project open, close, discard and recovery failures               | Part done (#416)                       |
+| P1       | [#377](https://github.com/userfypp/plan-measure/issues/377) | Pin geometry, coordinate, unit and format math with independent values | Part done (#410–#412)                  |
+| P1       | [#378](https://github.com/userfypp/plan-measure/issues/378) | Cover persistence failures and schema migrations with real older data  | Part done (#414)                       |
 | P1       | [#379](https://github.com/userfypp/plan-measure/issues/379) | Cover CSV, spreadsheet, JSON and export dialog correctness             |                                        |
 | P1       | [#380](https://github.com/userfypp/plan-measure/issues/380) | Assert Takeoff totals and groups in the model and the UI               | Includes #256                          |
 | P2       | [#381](https://github.com/userfypp/plan-measure/issues/381) | Set up test infrastructure, coverage and CI gates                      | Do first: makes the rest cheaper       |
 | P2       | [#382](https://github.com/userfypp/plan-measure/issues/382) | Cover rejection paths and no-op identity in session commands           |                                        |
 | P2       | [#383](https://github.com/userfypp/plan-measure/issues/383) | Cover workspace, clipboard, overlay and theme state                    |                                        |
 | P2       | [#384](https://github.com/userfypp/plan-measure/issues/384) | Make autosave and close-prompt tests deterministic and complete        |                                        |
-| P2       | [#385](https://github.com/userfypp/plan-measure/issues/385) | Cover app hooks, preferences and startup modules                       |                                        |
+| P2       | [#385](https://github.com/userfypp/plan-measure/issues/385) | Cover app hooks, preferences and startup modules                       | Part done (#415, #417–#419)            |
 | P2       | [#386](https://github.com/userfypp/plan-measure/issues/386) | Cover app-level flows, dialogs and settings                            |                                        |
 | P2       | [#387](https://github.com/userfypp/plan-measure/issues/387) | Test shape selection, mouse buttons and drag previews with real Konva  | See #272, #278, #295                   |
 | P2       | [#388](https://github.com/userfypp/plan-measure/issues/388) | Cover PdfViewer zoom, pan, keyboard and page-change behaviour          | See #296, #300                         |
