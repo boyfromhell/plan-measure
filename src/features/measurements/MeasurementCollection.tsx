@@ -272,7 +272,7 @@ export function MeasurementCollection({
       onFocusCapture={handleFocusCapture}
       onKeyDown={handleKeyDown}
     >
-      <div className={styles.list} role="list" aria-label="Measurements on current page">
+      <div className={styles.list} role="list" aria-label="Measurements">
         {measurements.map((measurement) => (
           <MeasurementRow
             key={measurement.id}
@@ -342,8 +342,8 @@ function VirtualCollectionContents({
       const start = entries.length;
       entries.push({
         key: `header:${group.key}`,
-        // Altura renderizada: min-height --target-fine (32) más el borde superior de 1 en la raíz.
-        // El título es de una sola línea y cabe en el control.
+        // Rendered height: min-height --target-fine (32) plus the 1 px top border on the root.
+        // The title is a single line and fits in the control.
         estimate: depth === 0 ? 33 : 32,
         tabStops: 2,
       });
@@ -587,7 +587,7 @@ function VirtualCollectionContents({
       {renderGroups(groups)}
     </div>
   ) : (
-    <div className={styles.list} role="list" aria-label="Measurements on current page">
+    <div className={styles.list} role="list" aria-label="Measurements">
       {renderRows(
         measurements.map((measurement) => measurement.id),
         0,

@@ -1,14 +1,14 @@
 /* @vitest-environment jsdom */
 
-// @ts-expect-error Vitest executes this test in Node; app TypeScript intentionally omits Node types.
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MeasurementGroup } from "./MeasurementGroup";
 
 const measurementGroupCss = readFileSync(
-  "src/features/measurements/MeasurementGroup.module.css",
+  resolve(import.meta.dirname, "MeasurementGroup.module.css"),
   "utf8",
 );
 

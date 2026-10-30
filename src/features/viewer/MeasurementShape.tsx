@@ -85,6 +85,7 @@ import {
   type CanvasVisualRoles,
 } from "./canvasVisualRoles";
 import { pointsToFlat } from "./geometry";
+import { isPrimaryViewerClick } from "./navigation";
 import {
   drawMeasurementHit,
   drawMeasurementOutlineScene,
@@ -1020,7 +1021,8 @@ export const MeasurementShape = memo(function MeasurementShape({
   }
 
   function select(event: KonvaEventObject<MouseEvent>) {
-    if (!isSelectable()) return;
+    // Konva reports a click for every mouse button; only the primary button selects, as on the page.
+    if (!isSelectable() || !isPrimaryViewerClick(event.evt.button)) return;
     event.cancelBubble = true;
     onSelectMeasurement(
       measurement.id,
@@ -1263,7 +1265,10 @@ export const MeasurementShape = memo(function MeasurementShape({
           fill={visualRoles.handleFill}
           stroke={visualRoles.handleStroke}
           strokeWidth={CANVAS_VISUAL_METRICS.handleStrokeScreenPx / zoom}
-          hitStrokeWidth={circularHandleHitStrokeWidthScreenPx(interactionTargetScreenPx, handleRadiusScreenPx) / zoom}
+          hitStrokeWidth={
+            circularHandleHitStrokeWidthScreenPx(interactionTargetScreenPx, handleRadiusScreenPx) /
+            zoom
+          }
           draggable={editable}
           onClick={handleVertexClick}
           onMouseDown={(event) => handleVertexMouseDown(event, index)}

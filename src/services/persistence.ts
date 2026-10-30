@@ -1,10 +1,4 @@
-import {
-  deleteDB,
-  openDB,
-  type DBSchema,
-  type IDBPDatabase,
-  type IDBPTransaction,
-} from "idb";
+import { deleteDB, openDB, type DBSchema, type IDBPDatabase, type IDBPTransaction } from "idb";
 import type { CurrentSession, PdfMetadata } from "../types/domain";
 import {
   deserializeSessionForRecovery,
@@ -61,11 +55,7 @@ interface PlanMeasureDb extends DBSchema {
   };
 }
 
-type PersistenceTransaction = IDBPTransaction<
-  PlanMeasureDb,
-  ["sessions", "pdfs"],
-  "readwrite"
->;
+type PersistenceTransaction = IDBPTransaction<PlanMeasureDb, ["sessions", "pdfs"], "readwrite">;
 
 let databasePromise: Promise<IDBPDatabase<PlanMeasureDb>> | null = null;
 let databaseInstance: IDBPDatabase<PlanMeasureDb> | null = null;
@@ -328,6 +318,9 @@ async function requireExpectedRevision(
 export async function loadSavedSession(): Promise<SavedSession | null> {
   const database = await getDatabase();
   const transaction = database.transaction(["sessions", "pdfs"], "readwrite");
+  // A failed transaction rejects `done` as well as the request that failed. Callers get the error
+  // from the request, so the extra rejection must not surface as unhandled.
+  void transaction.done.catch(() => undefined);
   const state = await readOrCreatePersistenceState(transaction);
   if (state.activeRevision === null) {
     await transaction.done;
@@ -406,6 +399,7 @@ function rememberProjectSessionSummary(
 export async function listSavedProjects(): Promise<SavedProjectSummary[]> {
   const database = await getDatabase();
   const transaction = database.transaction(["sessions", "pdfs"], "readwrite");
+  void transaction.done.catch(() => undefined);
   const state = await readOrCreatePersistenceState(transaction);
   const [records, pdfKeys] = await Promise.all([
     transaction.objectStore("sessions").getAll(),
@@ -420,13 +414,15 @@ export async function listSavedProjects(): Promise<SavedProjectSummary[]> {
     listedProjectIds.add(record.projectId);
     const summary = readProjectSessionSummary(record);
     if (!summary) return [];
-    return [{
-      id: record.projectId,
-      name: summary.name,
-      pageCount: summary.pageCount,
-      savedAt: record.savedAt,
-      isCurrent: record.projectId === state.activeProjectId,
-    }];
+    return [
+      {
+        id: record.projectId,
+        name: summary.name,
+        pageCount: summary.pageCount,
+        savedAt: record.savedAt,
+        isCurrent: record.projectId === state.activeProjectId,
+      },
+    ];
   });
   for (const projectId of projectSessionSummaries.keys()) {
     if (!listedProjectIds.has(projectId)) projectSessionSummaries.delete(projectId);
@@ -441,6 +437,7 @@ export async function listSavedProjects(): Promise<SavedProjectSummary[]> {
 export async function loadSavedProject(projectId: string): Promise<Omit<SavedSession, "revision">> {
   const database = await getDatabase();
   const transaction = database.transaction(["sessions", "pdfs"], "readonly");
+  void transaction.done.catch(() => undefined);
   const key = projectRecordKey(projectId);
   const [project, pdf] = await Promise.all([
     transaction.objectStore("sessions").get(key),
@@ -470,6 +467,7 @@ export async function activateSavedProject(
   const serializedCurrentSession = currentSession ? serializeSession(currentSession) : null;
   const database = await getDatabase();
   const source = database.transaction("pdfs", "readonly");
+  void source.done.catch(() => undefined);
   const sourcePdf = await source.objectStore("pdfs").get(projectRecordKey(projectId));
   await source.done;
   if (!sourcePdf) throw new Error("The selected project is no longer available.");
@@ -651,6 +649,7 @@ export async function saveSessionMetadata(
   let pdfBlob = preparedPdfBlob;
   if (!pdfBlob) {
     const source = database.transaction("pdfs", "readonly");
+    void source.done.catch(() => undefined);
     const pdfRecord = await source.objectStore("pdfs").get(ACTIVE_KEY);
     await source.done;
     if (pdfRecord) {
@@ -697,7 +696,15 @@ async function saveSerializedSessionMetadata(
     await finishWrites(
       transaction,
       snapshot && state.activeProjectId
-        ? [putProjectSessionSnapshot(transaction, state.activeProjectId, serialized, preparedPdfBlob, sessionRecord.savedAt)]
+        ? [
+            putProjectSessionSnapshot(
+              transaction,
+              state.activeProjectId,
+              serialized,
+              preparedPdfBlob,
+              sessionRecord.savedAt,
+            ),
+          ]
         : [],
     );
     if (snapshot && state.activeProjectId) {
@@ -724,7 +731,9 @@ async function saveSerializedSessionMetadata(
     }),
   ];
   if (snapshot && state.activeProjectId) {
-    writes.push(putProjectSessionSnapshot(transaction, state.activeProjectId, serialized, preparedPdfBlob));
+    writes.push(
+      putProjectSessionSnapshot(transaction, state.activeProjectId, serialized, preparedPdfBlob),
+    );
   }
   await finishWrites(transaction, writes);
   if (snapshot && state.activeProjectId) {
@@ -764,6 +773,7 @@ export function beginSessionMetadataSaveOnPageExit(
 export async function discardSavedSession(expectedRevision: string): Promise<void> {
   const database = await getDatabase();
   const transaction = database.transaction(["sessions", "pdfs"], "readwrite");
+  void transaction.done.catch(() => undefined);
   const state = await requireExpectedRevision(transaction, expectedRevision);
   const writes: Array<Promise<unknown>> = [
     transaction.objectStore("sessions").delete(ACTIVE_KEY),
@@ -830,6 +840,7 @@ export async function discardSavedProject(
 ): Promise<boolean> {
   const database = await getDatabase();
   const transaction = database.transaction(["sessions", "pdfs"], "readwrite");
+  void transaction.done.catch(() => undefined);
   const state = await requireExpectedRevision(transaction, expectedRevision);
   const key = projectRecordKey(projectId);
   const [project, pdf] = await Promise.all([

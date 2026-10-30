@@ -1,5 +1,5 @@
-// Helpers compartidos por los tests de comportamiento del visor (PdfViewer, PdfAnnotationLayer, App).
-// No contiene lógica de producción: dobles de pdfjs/Konva/ResizeObserver y generadores de sesión.
+// Helpers shared by the viewer behaviour tests (PdfViewer, PdfAnnotationLayer, App).
+// No production logic: pdfjs/Konva/ResizeObserver doubles and session builders.
 
 import {
   forwardRef,
@@ -13,6 +13,7 @@ import {
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from "pdfjs-dist";
 import { vi } from "vitest";
 import { createEmptySession } from "../../app/sessionState";
+import { stubDialogMethods, stubMatchMedia } from "../../test/domTestUtils";
 import type { CurrentSession, PageState, Point } from "../../types/domain";
 
 export type CapturedProps = Record<string, unknown>;
@@ -22,7 +23,7 @@ export const PAGE_HEIGHT = 800;
 export const VIEWER_WIDTH = 1000;
 export const VIEWER_HEIGHT = 700;
 
-/** Props capturadas de los componentes react-konva y de PdfAnnotationLayer mockeados. */
+/** Props captured from the mocked react-konva components and PdfAnnotationLayer. */
 export const konvaCapture = {
   circles: [] as CapturedProps[],
   lines: [] as CapturedProps[],
@@ -38,7 +39,7 @@ export function resetKonvaCapture(): void {
   for (const list of Object.values(konvaCapture)) list.length = 0;
 }
 
-/** Fábrica para `vi.mock("react-konva", ...)`: renderiza hijos y captura las props de cada nodo. */
+/** Factory for `vi.mock("react-konva", ...)`: renders children and captures every node's props. */
 export function createReactKonvaMock() {
   return {
     Circle: (props: CapturedProps) => {
@@ -82,13 +83,17 @@ export function createReactKonvaMock() {
         const contentRef = useRef<HTMLDivElement>(null);
         useImperativeHandle(ref, () => ({ getContent: () => contentRef.current }));
         konvaCapture.stages.push({ ...props });
-        return <div ref={contentRef} data-testid="konva-content">{children as ReactNode}</div>;
+        return (
+          <div ref={contentRef} data-testid="konva-content">
+            {children as ReactNode}
+          </div>
+        );
       },
     ),
   };
 }
 
-/** Fábrica para `vi.mock("./PdfAnnotationLayer", ...)`. */
+/** Factory for `vi.mock("./PdfAnnotationLayer", ...)`. */
 export function createAnnotationLayerMock() {
   return {
     PdfAnnotationLayer: (props: CapturedProps) => {
@@ -98,20 +103,20 @@ export function createAnnotationLayerMock() {
   };
 }
 
-/** Estado compartido entre un test de App y el doble de `usePdfSessionLifecycle`. */
+/** State shared between an App test and the `usePdfSessionLifecycle` double. */
 export interface SessionLifecycleDouble {
   loading: boolean;
-  /** Última sesión que App publicó al ciclo de vida. */
+  /** Last session App published to the lifecycle. */
   session: CurrentSession | null;
-  /** Documento que publica "abrir un PDF". */
+  /** Document that "open a PDF" publishes. */
   pdf: PDFDocumentProxy | null;
-  /** Sesión que carga "abrir un PDF"; por defecto, una vacía de dos páginas. */
+  /** Session that "open a PDF" loads; an empty two-page session by default. */
   createSession?: (file: File) => CurrentSession;
 }
 
 /**
- * Sustituye solo el ciclo de vida (IndexedDB, parseo de PDF, autoguardado) para `vi.mock`: "abrir un
- * PDF" carga la sesión de `lifecycle` y publica su documento doble; el resto de App es real.
+ * Replaces only the lifecycle (IndexedDB, PDF parsing, autosave) for `vi.mock`: "open a PDF" loads
+ * the session from `lifecycle` and publishes its document double; the rest of App is real.
  */
 export function createSessionLifecycleMock(lifecycle: SessionLifecycleDouble) {
   return {
@@ -185,7 +190,7 @@ export function stageHandler(name: string): StageHandler {
   return handler;
 }
 
-/** Evento Konva con el puntero en `screen`. `onStage` simula un clic sobre el fondo del Stage. */
+/** Konva event with the pointer at `screen`. `onStage` simulates a click on the Stage background. */
 export function konvaPointerEvent(
   screen: Point,
   {
@@ -195,14 +200,26 @@ export function konvaPointerEvent(
     shiftKey = false,
   }: { button?: number; onStage?: boolean; deltaY?: number; shiftKey?: boolean } = {},
 ) {
-  const stage = { getPointerPosition: () => ({ ...screen }), getStage: () => stage, name: () => "" };
+  const stage = {
+    getPointerPosition: () => ({ ...screen }),
+    getStage: () => stage,
+    name: () => "",
+  };
   const target = onStage ? stage : { getStage: () => stage, name: () => "" };
   return { target, evt: { button, deltaY, shiftKey, preventDefault: vi.fn() } };
 }
 
 export function rect(width: number, height: number): DOMRect {
   return {
-    x: 0, y: 0, width, height, top: 0, right: width, bottom: height, left: 0, toJSON: () => ({}),
+    x: 0,
+    y: 0,
+    width,
+    height,
+    top: 0,
+    right: width,
+    bottom: height,
+    left: 0,
+    toJSON: () => ({}),
   } as DOMRect;
 }
 
@@ -226,55 +243,34 @@ export class ControlledResizeObserver implements ResizeObserver {
 }
 
 /**
- * Instala los dobles de DOM que necesita el visor en jsdom (matchMedia, ResizeObserver, canvas y
- * tamaño del visor). Debe llamarse en `beforeEach`; `vi.restoreAllMocks()`/`unstubAllGlobals()` lo revierten.
+ * Installs the DOM doubles the viewer needs in jsdom (matchMedia, `<dialog>`, ResizeObserver, canvas
+ * and viewer size). Call it in `beforeEach`; `vi.restoreAllMocks()`/`unstubAllGlobals()` undo it,
+ * except the `<dialog>` methods, which stay for the rest of the file.
  */
 export function installViewerDomDoubles(): void {
-  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: query.includes("(any-pointer: fine)"),
-    media: query,
-    onchange: null,
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    dispatchEvent: vi.fn(() => true),
-  }));
-  // jsdom no implementa <dialog>.show()/showModal()/close(); basta con reflejar el atributo `open`.
-  for (const method of ["show", "showModal"] as const) {
-    Object.defineProperty(HTMLDialogElement.prototype, method, {
-      configurable: true,
-      value(this: HTMLDialogElement) {
-        this.setAttribute("open", "");
-      },
-    });
-  }
-  Object.defineProperty(HTMLDialogElement.prototype, "close", {
-    configurable: true,
-    value(this: HTMLDialogElement) {
-      this.removeAttribute("open");
-      this.dispatchEvent(new Event("close"));
-    },
-  });
+  stubMatchMedia((query) => query.includes("(any-pointer: fine)"));
+  stubDialogMethods();
   ControlledResizeObserver.instances = [];
   vi.stubGlobal("ResizeObserver", ControlledResizeObserver);
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(
     () => ({ drawImage: vi.fn() }) as unknown as CanvasRenderingContext2D,
   );
   const viewerRect = rect(VIEWER_WIDTH, VIEWER_HEIGHT);
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-    // El visor y el marco del ViewerShell (que mide la capacidad de edición) ocupan todo el viewport.
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    // The viewer and the ViewerShell frame (which measures the authoring capability) fill the viewport.
     return this.getAttribute("aria-label")?.startsWith("PDF viewer, page") ||
       this.hasAttribute("data-authoring-capability")
       ? viewerRect
-      : // Resto de elementos (p. ej. el dock): vacíos y pegados al borde inferior, sin obstruir el visor.
+      : // Other elements (the dock, say): empty and pinned to the bottom edge, clear of the viewer.
         { ...rect(0, 0), y: VIEWER_HEIGHT, top: VIEWER_HEIGHT, bottom: VIEWER_HEIGHT };
   });
 }
 
 /**
- * Sustituye requestAnimationFrame por una cola manual: los tests vacían la cola con `flush()`,
- * sin esperas reales.
+ * Replaces requestAnimationFrame with a manual queue: tests drain it with `flush()`, without real
+ * waits.
  */
 export function installManualAnimationFrames() {
   const queue = new Map<number, FrameRequestCallback>();
@@ -296,7 +292,9 @@ export function installManualAnimationFrames() {
   };
 }
 
-export function createPdfPage(dimensions = { width: PAGE_WIDTH, height: PAGE_HEIGHT }): PDFPageProxy {
+export function createPdfPage(
+  dimensions = { width: PAGE_WIDTH, height: PAGE_HEIGHT },
+): PDFPageProxy {
   return {
     rotate: 0,
     getViewport: ({ scale, rotation = 0 }: { scale: number; rotation?: number }) => ({
@@ -324,7 +322,7 @@ export function createPdfDocument(
   } as unknown as PDFDocumentProxy;
 }
 
-/** Sesión con `pageCount` páginas; la página 1 queda calibrada a 10 px de página = 1 m (100 mm/px). */
+/** Session with `pageCount` pages; page 1 is calibrated at 10 page px = 1 m (100 mm/px). */
 export function createCalibratedSession(pageCount = 1, { calibrated = true } = {}): CurrentSession {
   const session = createEmptySession({ name: "plan.pdf", size: 10, lastModified: 1 }, pageCount);
   if (!calibrated) return session;

@@ -5,8 +5,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { KeyboardGeometryHelp } from "./KeyboardGeometryHelp";
 import type { Measurement } from "../../types/domain";
-// @ts-expect-error Vitest executes this regression test in Node; app TypeScript intentionally omits Node types.
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 let root: Root;
 let container: HTMLDivElement;
@@ -65,11 +65,14 @@ it("keeps help visible past notification timeout and dismisses only on explicit 
 });
 it("paints both viewer cursors above the help without intercepting its controls", () => {
   const stylesheet = document.createElement("style");
-  const tokens = readFileSync("src/styles/tokens.css", "utf8");
+  const tokens = readFileSync(resolve(import.meta.dirname, "../../styles/tokens.css"), "utf8");
   // jsdom does not resolve var(), so inline the z-index tokens the stylesheet references.
-  stylesheet.textContent = readFileSync("src/features/viewer/PdfViewer.module.css", "utf8").replace(
+  stylesheet.textContent = readFileSync(
+    resolve(import.meta.dirname, "PdfViewer.module.css"),
+    "utf8",
+  ).replace(
     /var\((--z-[a-z-]+)\)/g,
-    (_match: string, name: string) => new RegExp(`${name}: (\\d+);`).exec(tokens)![1],
+    (_match: string, name: string) => new RegExp(`${name}: (\\d+);`).exec(tokens)![1]!,
   );
   document.head.append(stylesheet);
   try {
@@ -125,10 +128,7 @@ it("provides explicit reference endpoints without offering whole-measurement mov
     ),
   );
   const select = container.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')!;
-  expect(selectOptionLabels(select)).toEqual([
-    "Start point",
-    "End point",
-  ]);
+  expect(selectOptionLabels(select)).toEqual(["Start point", "End point"]);
   chooseSelectOption(select, "End point");
   expect(onTargetChange).toHaveBeenCalledExactlyOnceWith(1);
 });

@@ -75,7 +75,7 @@ The numbers live in `perf/size-budget.json` and work in three parts:
 3. **Ratchet**: when a build is more than six allowances
    (`ceilingHeadroom.maximum`) below a ceiling, `perf:size` fails until the
    ceiling is lowered to the new size plus four allowances, in the same pull
-   request. Savings of two allowances or more are kept; smaller ones need no edit.
+   request. Savings of more than two allowances are kept; smaller ones need no edit.
 
 Gzip moves by a few bytes when other chunks change their hashed names; the
 per-pull-request comparison and the headroom absorb that noise, so no check turns
@@ -178,14 +178,13 @@ network, GC, OS, or automation overhead, and it should be treated as a secondary
 signal.
 
 Compares the medians of five samples with `perf/baseline.json`. Fails on a
-regression
-
-> 30% of metrics (for small counts, 2 long tasks, 10 shapes, or 20 additional nodes
-> are tolerated). FPS fails with a drop >30%. In normal mode, the absolute targets
-> M1000/4x ≥30 FPS and M5000/1x ≥30 FPS on the real unnormalized median
-> (`rawMedianFps`) produce visible warnings in the console and in the GitHub Actions
-> summary, without blocking the run. The initial baseline is still below both. Only
-> strict mode additionally requires those minimums:
+regression of more than 30% in any metric (for small counts, 2 long tasks, 10
+shapes, or 20 additional nodes are tolerated). FPS fails with a drop of more than
+30%. In normal mode, the absolute zoom targets M1000/4x ≥30 FPS and M5000/1x ≥30
+FPS on the real unnormalized median (`rawMedianFps`) produce visible warnings in
+the console and in the GitHub Actions summary, without blocking the run. The
+current baseline meets both (about 58 FPS each, with no `targetWarnings`). Only
+strict mode additionally requires those minimums:
 
 ```sh
 npm run perf:e2e:strict
@@ -214,6 +213,19 @@ PERF_SAMPLES=1 PERF_COUNT=1000 PERF_CPU=1 PERF_SKIP_PDF=1 npm run perf:e2e
 `PERF_*` filters produce a partial run and are announced as such. They cannot
 create a baseline. `PERF_BROWSER_CHANNEL=chrome` allows investigating an installed
 Chromium; recording a different browser requires declaring that difference.
+
+A full e2e run ends with the page browser benchmark (a generated 120-page PDF with
+page labels), compared with `perf/page-browser-baseline.json`. `PERF_SKIP_PDF=1`
+skips it. To run only that benchmark:
+
+```sh
+npm run perf:e2e -- --page-browser-only
+```
+
+`--record-page-browser-baseline` writes its baseline. It needs five samples at both
+CPU rates and refuses to overwrite an existing file, so a regression cannot be
+hidden by re-recording; to replace it deliberately, delete the file in the same
+pull request and explain why.
 
 ## Canvas rendering rules
 
@@ -346,9 +358,9 @@ to verify the budgets.
 
 The `performance.yml` workflow runs the size checks and selftests on PRs and main
 (the comparison with the base only on PRs); e2e in normal mode via
-`workflow_dispatch` and a weekly cron. Strict mode is optional, to enforce
-the absolute target once it is reached. Shared runners are noisy, and normalization
-does not turn them into a lab. A failure there requires confirmation before
+`workflow_dispatch` and a weekly cron. Strict mode, which also enforces the
+absolute targets, is optional and only runs by hand. Shared runners are noisy,
+and normalization does not turn them into a lab. A failure there requires confirmation before
 accepting new references. It never updates the baseline automatically. The
 scenarios are synthetic; CPU 4x does not identify a physical device. Playwright's
 WebKit is not equivalent to Safari; this automated layer uses Chromium.

@@ -4,8 +4,10 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentSession } from "../../types/domain";
+import { createCsvExportSettingsPreset, normalizeCsvExportSettings } from "../../services/csv";
 import { chooseSelectOption } from "../../components/ui/selectTestUtils";
 import { ExportDialog } from "./ExportDialog";
+import { stubDialogMethods } from "../../test/domTestUtils";
 
 const mocks = vi.hoisted(() => ({
   downloadTakeoff: vi.fn(),
@@ -47,6 +49,7 @@ vi.mock("../../services/dataJson", () => ({ downloadDataJson: mocks.downloadData
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
+let restoreDialogMethods = () => {};
 
 function sessionFixture(): CurrentSession {
   return {
@@ -62,7 +65,15 @@ function sessionFixture(): CurrentSession {
         activeCalibrationId: null,
         nextCalibrationNumber: 1,
         measurements: [],
-        nextMeasurementNumber: { line: 1, polyline: 1, polygon: 1, rectangle: 1, ellipse: 1, cloud: 1, count: 1 },
+        nextMeasurementNumber: {
+          line: 1,
+          polyline: 1,
+          polygon: 1,
+          rectangle: 1,
+          ellipse: 1,
+          cloud: 1,
+          count: 1,
+        },
       },
     },
     settings: {
@@ -164,20 +175,7 @@ beforeEach(() => {
   (
     globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
   ).IS_REACT_ACT_ENVIRONMENT = true;
-  Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
-    configurable: true,
-    value(this: HTMLDialogElement) {
-      this.open = true;
-    },
-  });
-  Object.defineProperty(HTMLDialogElement.prototype, "close", {
-    configurable: true,
-    value(this: HTMLDialogElement) {
-      if (!this.open) return;
-      this.open = false;
-      this.dispatchEvent(new Event("close"));
-    },
-  });
+  restoreDialogMethods = stubDialogMethods();
   mocks.downloadTakeoff.mockReset().mockResolvedValue(undefined);
   mocks.downloadCsvWithTakeoff.mockReset().mockResolvedValue(undefined);
   mocks.downloadCsv.mockReset();
@@ -193,6 +191,7 @@ beforeEach(() => {
 
 afterEach(() => {
   if (root) act(() => root?.unmount());
+  restoreDialogMethods();
   container?.remove();
   document.querySelectorAll('[role="dialog"]').forEach((element) => element.remove());
   root = null;
@@ -353,7 +352,9 @@ describe("ExportDialog", () => {
 
     choose("export-format", "annotated-pdf");
 
-    expect(selectedLabel("export-format")).toContain(SELECT_LABELS["export-format"].options["annotated-pdf"]);
+    expect(selectedLabel("export-format")).toContain(
+      SELECT_LABELS["export-format"].options["annotated-pdf"],
+    );
     expect(dialog().querySelector('button[aria-label="Data"]')).toBeNull();
     expect(button("Defaults")).toBeUndefined();
     expect(dialog().querySelector('[role="tablist"]')).toBeNull();
@@ -418,7 +419,9 @@ describe("ExportDialog", () => {
     renderDialog();
     selectClassificationAssignments();
     choose("export-format", "annotated-pdf");
-    expect(selectedLabel("export-format")).toContain(SELECT_LABELS["export-format"].options["annotated-pdf"]);
+    expect(selectedLabel("export-format")).toContain(
+      SELECT_LABELS["export-format"].options["annotated-pdf"],
+    );
 
     act(() => root!.render(null));
     renderDialog();
@@ -433,16 +436,17 @@ describe("ExportDialog", () => {
       act(() => button("Required only")!.click());
       choose("csv-data", "classification-assignments");
       choose("export-format", format);
-      expect(selectedLabel("csv-data")).toContain(SELECT_LABELS["csv-data"].options["measurements"]);
+      expect(selectedLabel("csv-data")).toContain(
+        SELECT_LABELS["csv-data"].options["measurements"],
+      );
       expect(dialog().querySelector('[role="tablist"]')).not.toBeNull();
       await act(async () => button(`Export ${format.toUpperCase()}`)!.click());
-      expect(mocks.downloadSpreadsheet).toHaveBeenCalledWith(
-        format,
-        session,
-        ["1"],
-        expect.any(Object),
-      );
-      expect(mocks.updateSettings).toHaveBeenCalledOnce();
+      const requiredOnly = createCsvExportSettingsPreset(session, "required-only");
+      expect(requiredOnly).not.toEqual(session.settings.csvExport);
+      expect(mocks.downloadSpreadsheet).toHaveBeenCalledWith(format, session, ["1"], requiredOnly);
+      expect(mocks.updateSettings).toHaveBeenCalledExactlyOnceWith({
+        csvExport: normalizeCsvExportSettings(session, requiredOnly),
+      });
       expect(mocks.downloadClassificationAssignmentsCsv).not.toHaveBeenCalled();
       expect(onClose).toHaveBeenCalledOnce();
     },

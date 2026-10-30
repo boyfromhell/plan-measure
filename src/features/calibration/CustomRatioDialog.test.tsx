@@ -5,9 +5,11 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPageCalibrationFromRatio } from "./ratioCalibration";
 import { CustomRatioDialog } from "./CustomRatioDialog";
+import { stubDialogMethods } from "../../test/domTestUtils";
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
+let restoreDialogMethods = () => {};
 
 function setInputValue(input: HTMLInputElement, value: string) {
   act(() => {
@@ -65,20 +67,7 @@ beforeEach(() => {
   (
     globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
   ).IS_REACT_ACT_ENVIRONMENT = true;
-  Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
-    configurable: true,
-    value(this: HTMLDialogElement) {
-      this.open = true;
-    },
-  });
-  Object.defineProperty(HTMLDialogElement.prototype, "close", {
-    configurable: true,
-    value(this: HTMLDialogElement) {
-      if (!this.open) return;
-      this.open = false;
-      this.dispatchEvent(new Event("close"));
-    },
-  });
+  restoreDialogMethods = stubDialogMethods();
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -86,6 +75,7 @@ beforeEach(() => {
 
 afterEach(() => {
   if (root) act(() => root?.unmount());
+  restoreDialogMethods();
   container?.remove();
   root = null;
   container = null;
@@ -117,7 +107,10 @@ describe("CustomRatioDialog", () => {
     });
 
     onConfirm.mockClear();
-    setInputValue(document.querySelector<HTMLInputElement>("#custom-ratio-name")!, " Detail ratio ");
+    setInputValue(
+      document.querySelector<HTMLInputElement>("#custom-ratio-name")!,
+      " Detail ratio ",
+    );
     setInputValue(ratio, "60");
     act(() => button("Save scale").click());
     expect(onConfirm).toHaveBeenCalledWith({
@@ -140,7 +133,11 @@ describe("CustomRatioDialog", () => {
 
     expect(onConfirm).toHaveBeenCalledWith({
       name: "Scale 2",
-      calibration: createPageCalibrationFromRatio({ mode: "xy", xDenominator: 70, yDenominator: 30 }),
+      calibration: createPageCalibrationFromRatio({
+        mode: "xy",
+        xDenominator: 70,
+        yDenominator: 30,
+      }),
     });
   });
 
@@ -193,9 +190,9 @@ describe("CustomRatioDialog", () => {
     const uniform = document.querySelector<HTMLInputElement>("#custom-ratio-uniform")!;
     expect(uniform.getAttribute("aria-invalid")).toBe("true");
     expect(uniform.getAttribute("aria-describedby")).toBeTruthy();
-    expect(document.getElementById(uniform.getAttribute("aria-describedby")!)?.textContent).toContain(
-      "Enter a ratio denominator.",
-    );
+    expect(
+      document.getElementById(uniform.getAttribute("aria-describedby")!)?.textContent,
+    ).toContain("Enter a ratio denominator.");
 
     setInputValue(uniform, "0");
     act(() => button("Save scale").click());

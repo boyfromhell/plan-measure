@@ -6,7 +6,7 @@ Search existing issues, then use the bug or feature request template. Keep each 
 
 ## Development
 
-Requires Node.js 24 and npm:
+Requires Node.js 24, pinned in `.nvmrc` (`nvm use` picks it up), and npm:
 
 ```bash
 npm ci
@@ -17,17 +17,27 @@ Before opening a pull request:
 
 ```bash
 npm run lint
+npm run format:check
 npm test
 npm run build
 git diff --check
 ```
 
-Use `npm run format` only when formatting is part of the change.
+CI fails on unformatted files; `npm run format` fixes them.
+
+More checks, when they apply:
+
+- Changed `.github/scripts`? Run `node --test .github/scripts/*.test-node.mjs`.
+- Changed dependencies, startup or the viewer? Run `npm run build && npm run perf:size`. The required `size` check fails when a size budget is exceeded.
+- Changed startup, loading or the app shell? Run `npm run build && npm run test:smoke`, which opens the start screen and the sample project in Chromium and fails on any page error. It needs `npm ci --prefix perf` and `./perf/node_modules/.bin/playwright install chromium` once.
+
+`npm run test:coverage` runs the tests with coverage and writes an HTML report to `coverage/`. CI shows the totals in the job summary; there is no threshold.
 
 ## Pull requests
 
 - Keep changes focused; exclude generated or unrelated edits.
 - Use a Conventional Commit title, such as `feat:`, `fix:`, or `docs:`; add `!` for a breaking change. The squash commit title drives releases.
+- The first pull request from a new contributor needs a maintainer to approve the checks before they run. This is a GitHub safety rule, not a judgement on your change.
 - Follow the PR template. Describe the change and its effect in the first **Summary** bullet; it supplies the release-note description.
 - Record validation and known limitations. Include screenshots when useful.
 - Link the relevant issue with `Closes #123` when fully resolved.

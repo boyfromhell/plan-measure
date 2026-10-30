@@ -4,6 +4,43 @@ All notable changes to Plan Measure are documented in this file.
 
 This changelog starts with v2.3.0. Earlier releases are documented in GitHub Releases.
 
+## [2.11.4](https://github.com/userfypp/plan-measure/compare/v2.11.3...v2.11.4) (2026-10-30)
+
+
+### Fixed
+
+* apply a lower maximum zoom to the current view at once ([#428](https://github.com/userfypp/plan-measure/issues/428)) ([6f9f3e9](https://github.com/userfypp/plan-measure/commit/6f9f3e964b5893d91eb490bf4c2e2133e4640088))
+* draw the page grid wherever the view is on large pages ([#440](https://github.com/userfypp/plan-measure/issues/440)) ([c4af64b](https://github.com/userfypp/plan-measure/commit/c4af64b8e9f8732ef3b9c0102772fa1420d0017a))
+* ignore right and middle clicks when selecting a measurement ([#429](https://github.com/userfypp/plan-measure/issues/429)) ([a91f1df](https://github.com/userfypp/plan-measure/commit/a91f1df2532100226e01fb14ebf35903a0eb4ea4))
+* keep measurement group keys unique for imported classification IDs ([#427](https://github.com/userfypp/plan-measure/issues/427)) ([e16a893](https://github.com/userfypp/plan-measure/commit/e16a893839ce12da85434b27c66802a69c32530f))
+* keep the page window in range for negative scroll positions ([#435](https://github.com/userfypp/plan-measure/issues/435)) ([7d59458](https://github.com/userfypp/plan-measure/commit/7d59458760091516f221400b45c033e5610ba7b6))
+* show the PDF size limit and storage use in MiB ([#431](https://github.com/userfypp/plan-measure/issues/431)) ([89d069f](https://github.com/userfypp/plan-measure/commit/89d069fcbdb89c9ca402a0742c5fc23698d9b446))
+* stop describing the Measurements list as the current page only ([#432](https://github.com/userfypp/plan-measure/issues/432)) ([20946a4](https://github.com/userfypp/plan-measure/commit/20946a4ba064d5a669bccbbe40c22bc827a5c118))
+* stop failed read and discard transactions from raising unhandled rejections ([#414](https://github.com/userfypp/plan-measure/issues/414)) ([7c37799](https://github.com/userfypp/plan-measure/commit/7c37799291f733f6adf90e1124ada438cbbd7cf5))
+
+
+### Documentation
+
+* bring the roadmap up to date and point the architecture checks to CONTRIBUTING ([#436](https://github.com/userfypp/plan-measure/issues/436)) ([9a788c4](https://github.com/userfypp/plan-measure/commit/9a788c4621264ff0f767d4d96110a9b7162cbf22))
+* correct the FPS target status in the performance guide ([#430](https://github.com/userfypp/plan-measure/issues/430)) ([3463b1f](https://github.com/userfypp/plan-measure/commit/3463b1f4b04bd0583f37a1ea85a3ea72f50d3337))
+
+## [2.11.3](https://github.com/userfypp/plan-measure/compare/v2.11.2...v2.11.3) (2026-10-28)
+
+
+### Fixed
+
+* add no Undo step when a command changes nothing ([#408](https://github.com/userfypp/plan-measure/issues/408)) ([d4780d1](https://github.com/userfypp/plan-measure/commit/d4780d13e37d06887f98554edda8b1c25356b620)), closes [#374](https://github.com/userfypp/plan-measure/issues/374)
+* flag recovered Lines with coincident endpoints for repair in exports ([#372](https://github.com/userfypp/plan-measure/issues/372)) ([9a2bca7](https://github.com/userfypp/plan-measure/commit/9a2bca7b26959c74e61e548ed84a2b88bba558d1))
+* keep cloud alpha colors valid for NaN opacity ([#402](https://github.com/userfypp/plan-measure/issues/402)) ([54fb67f](https://github.com/userfypp/plan-measure/commit/54fb67f30e7fc90f65c0d2de6966f55e16dc45a8))
+* keep the annotated PDF export working for cloud names outside Latin-1 ([#407](https://github.com/userfypp/plan-measure/issues/407)) ([690971c](https://github.com/userfypp/plan-measure/commit/690971c505d7c56abff7264ee3f71d3cf0d99424)), closes [#373](https://github.com/userfypp/plan-measure/issues/373)
+
+
+### Documentation
+
+* add the test coverage issues and refresh the roadmap ([#401](https://github.com/userfypp/plan-measure/issues/401)) ([c4c49c5](https://github.com/userfypp/plan-measure/commit/c4c49c5ff63cd92bd57acc6e227281cb8abc6fc8))
+* make the user guide's measurement section easier to scan ([#409](https://github.com/userfypp/plan-measure/issues/409)) ([5b64df9](https://github.com/userfypp/plan-measure/commit/5b64df9a83d76c5717e3088886872228a073f5e2))
+* reorganize the roadmap in tables and add contributor credits ([#369](https://github.com/userfypp/plan-measure/issues/369)) ([1fb99fc](https://github.com/userfypp/plan-measure/commit/1fb99fc69edfa9bc11aad4d9880b1fafa344eaac))
+
 ## [2.11.2](https://github.com/userfypp/plan-measure/compare/v2.11.1...v2.11.2) (2026-10-26)
 
 

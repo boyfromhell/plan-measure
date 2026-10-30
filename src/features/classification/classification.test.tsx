@@ -1,4 +1,3 @@
-// @ts-expect-error Vitest executes this regression test in Node; app TypeScript intentionally omits Node types.
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -16,7 +15,10 @@ const inlineFieldCss = readFileSync(
   new URL("../../components/ui/InlineField.module.css", import.meta.url),
   "utf8",
 );
-const inputCss = readFileSync(new URL("../../components/ui/Input.module.css", import.meta.url), "utf8");
+const inputCss = readFileSync(
+  new URL("../../components/ui/Input.module.css", import.meta.url),
+  "utf8",
+);
 
 const catalog: ClassificationCatalog = {
   dimensions: [
